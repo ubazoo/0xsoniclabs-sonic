@@ -1,11 +1,10 @@
 // Package memory provides methods to obtain system memory information.
 package memory
 
-import "golang.org/x/sys/unix"
+// #include <unistd.h>
+import "C"
 
 // TotalMemory returns the total system memory reported by the OS in bytes.
 func TotalMemory() uint64 {
-	var info unix.Sysinfo_t
-	unix.Sysinfo(&info)
-	return info.Totalram
+	return uint64(C.sysconf(C._SC_PHYS_PAGES) * C.sysconf(C._SC_PAGE_SIZE))
 }
