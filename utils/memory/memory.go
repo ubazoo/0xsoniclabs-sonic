@@ -6,5 +6,5 @@ import "C"
 
 // TotalMemory returns the total system memory reported by the OS in bytes.
 func TotalMemory() uint64 {
-	return uint64(C.sysconf(C._SC_PHYS_PAGES) * C.sysconf(C._SC_PAGE_SIZE))
+	return uint64(C.sysconf(C._SC_PHYS_PAGES)) * uint64(C.sysconf(C._SC_PAGE_SIZE))
 }
