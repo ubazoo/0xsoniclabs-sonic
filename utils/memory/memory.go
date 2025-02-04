@@ -9,10 +9,3 @@ func TotalMemory() uint64 {
 	unix.Sysinfo(&info)
 	return info.Totalram
 }
-
-// FreeMemory returns the total free system memory in bytes as reported by the OS.
-func FreeMemory() uint64 {
-	var info unix.Sysinfo_t
-	unix.Sysinfo(&info)
-	return info.Freeram
-}
