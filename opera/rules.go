@@ -125,8 +125,6 @@ type DagRules struct {
 type EmitterRules struct {
 	// Interval defines the length of the period
 	// between events produced by the emitter in milliseconds.
-	// If set to zero, a heuristic is used producing irregular
-	// intervals.
 	//
 	// The Interval is used to control the rate of event
 	// production by the emitter. It thus indirectly controls

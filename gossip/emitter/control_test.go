@@ -8,16 +8,16 @@ import (
 	"github.com/0xsoniclabs/sonic/opera"
 )
 
-func TestGetEmitterIntervalLimit_IsOffWhenIntervalIsZero(t *testing.T) {
+func TestGetEmitterIntervalLimit_ZeroIsAValidInterval(t *testing.T) {
 	ms := time.Microsecond
 	rules := opera.EmitterRules{
 		Interval:       0,
 		StallThreshold: inter.Timestamp(200 * ms),
 	}
 	for _, delay := range []time.Duration{0, 100 * ms, 199 * ms, 200 * ms, 201 * ms} {
-		_, enabled := getEmitterIntervalLimit(rules, delay)
-		if enabled {
-			t.Fatal("should be disabled")
+		interval := getEmitterIntervalLimit(rules, delay)
+		if interval != 0 {
+			t.Fatal("should be zero")
 		}
 	}
 }
@@ -35,10 +35,7 @@ func TestGetEmitterIntervalLimit_SwitchesToStallIfDelayed(t *testing.T) {
 	}
 
 	for _, delay := range []time.Duration{0, 100 * ms, 199 * ms, 200 * ms, 201 * ms, 60 * time.Minute} {
-		got, enabled := getEmitterIntervalLimit(rules, delay)
-		if !enabled {
-			t.Fatalf("should be enabled for delay %v", delay)
-		}
+		got := getEmitterIntervalLimit(rules, delay)
 		want := regular
 		if delay > stallThreshold {
 			want = stalled
