@@ -268,8 +268,13 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 }
 
 func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
-	if em.config.Validator.ID == 0 {
-		// short circuit if not a validator
+	// Check whether the node is a validator
+	if !em.isValidator() {
+		return nil, nil
+	}
+
+	// Check if it's time to emit.
+	if !em.isAllowedToEmit() {
 		return nil, nil
 	}
 
@@ -326,16 +331,6 @@ func (em *Emitter) loadPrevEmitTime() time.Time {
 
 // createEvent is not safe for concurrent use.
 func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.EventPayload, error) {
-	// Check whether the node is a validator
-	if !em.isValidator() {
-		return nil, nil
-	}
-
-	// Check if it's time to emit.
-	if !em.isAllowedToEmit() {
-		return nil, nil
-	}
-
 	if synced := em.logSyncStatus(em.isSyncedToEmit()); !synced {
 		// I'm reindexing my old events, so don't create events until connect all the existing self-events
 		return nil, nil
