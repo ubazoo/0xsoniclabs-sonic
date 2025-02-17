@@ -243,7 +243,7 @@ var BaseChainConfig = ethparams.ChainConfig{
 	MergeNetsplitBlock:      nil,
 	ShanghaiTime:            nil, // to be overwritten in EvmChainConfig
 	CancunTime:              nil, // to be overwritten in EvmChainConfig
-	PragueTime:              nil,
+	PragueTime:              nil, // to be overwritten in EvmChainConfig
 	VerkleTime:              nil,
 	TerminalTotalDifficulty: nil,
 	Ethash:                  new(ethparams.EthashConfig),
