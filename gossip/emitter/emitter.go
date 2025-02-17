@@ -17,7 +17,6 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
-	"github.com/Fantom-foundation/lachesis-base/utils/piecefunc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -27,7 +26,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/logger"
 	"github.com/0xsoniclabs/sonic/utils/errlock"
-	"github.com/0xsoniclabs/sonic/utils/rate"
 )
 
 const (
@@ -102,7 +100,6 @@ type Emitter struct {
 	emittedEventFile *os.File
 	emittedBvsFile   *os.File
 	emittedEvFile    *os.File
-	busyRate         *rate.Gauge
 
 	logger.Periodic
 
@@ -154,7 +151,6 @@ func (em *Emitter) init() {
 	if len(em.config.PrevEpochVoteFile.Path) != 0 {
 		em.emittedEvFile = openPrevActionFile(em.config.PrevEpochVoteFile.Path, em.config.PrevEpochVoteFile.SyncMode)
 	}
-	em.busyRate = rate.NewGauge()
 }
 
 // Start starts event emission.
@@ -198,7 +194,6 @@ func (em *Emitter) Stop() {
 	close(em.done)
 	em.done = nil
 	em.wg.Wait()
-	em.busyRate.Stop()
 }
 
 func (em *Emitter) tick() {
@@ -210,11 +205,6 @@ func (em *Emitter) tick() {
 	if !em.world.IsSynced() {
 		// synced time ~= last time when it's true that "not synced yet"
 		em.syncStatus.p2pSynced = time.Now()
-	}
-	if em.idle() {
-		em.busyRate.Mark(0)
-	} else {
-		em.busyRate.Mark(1)
 	}
 	if em.world.IsBusy() {
 		return
@@ -278,8 +268,13 @@ func (em *Emitter) getSortedTxs(baseFee *big.Int) *transactionsByPriceAndNonce {
 }
 
 func (em *Emitter) EmitEvent() (*inter.EventPayload, error) {
-	if em.config.Validator.ID == 0 {
-		// short circuit if not a validator
+	// Check whether the node is a validator
+	if !em.isValidator() {
+		return nil, nil
+	}
+
+	// Check if it's time to emit.
+	if !em.isAllowedToEmit() {
 		return nil, nil
 	}
 
@@ -336,10 +331,6 @@ func (em *Emitter) loadPrevEmitTime() time.Time {
 
 // createEvent is not safe for concurrent use.
 func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.EventPayload, error) {
-	if !em.isValidator() {
-		return nil, nil
-	}
-
 	if synced := em.logSyncStatus(em.isSyncedToEmit()); !synced {
 		// I'm reindexing my old events, so don't create events until connect all the existing self-events
 		return nil, nil
@@ -415,25 +406,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	}
 
 	// set consensus fields
-	var metric ancestor.Metric
-	err := em.world.Build(mutEvent, func() {
-		// calculate event metric when it is indexed by the vector clock
-		if em.fcIndexer != nil {
-			pastMe := em.fcIndexer.ValidatorsPastMe()
-			metric = (ancestor.Metric(pastMe) * piecefunc.DecimalUnit) / ancestor.Metric(em.validators.TotalWeight())
-			if pastMe < em.validators.Quorum() {
-				metric /= 15
-			}
-			if metric < 0.03*piecefunc.DecimalUnit {
-				metric = 0.03 * piecefunc.DecimalUnit
-			}
-			metric = overheadAdjustedEventMetricF(em.validators.Len(), uint64(em.busyRate.Rate1()*piecefunc.DecimalUnit), metric)
-			metric = kickStartMetric(metric, mutEvent.Seq())
-		} else if em.quorumIndexer != nil {
-			metric = eventMetric(em.quorumIndexer.GetMetricOf(hash.Events{mutEvent.ID()}), mutEvent.Seq())
-			metric = overheadAdjustedEventMetricF(em.validators.Len(), uint64(em.busyRate.Rate1()*piecefunc.DecimalUnit), metric)
-		}
-	})
+	err := em.world.Build(mutEvent, nil)
 	if err != nil {
 		if err == ErrNotEnoughGasPower {
 			em.Periodic.Warn(time.Second, "Not enough gas power to emit event. Too small stake?",
@@ -444,22 +417,8 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 		return nil, nil
 	}
 
-	// Pre-check if event should be emitted
-	// It is checked in advance to avoid adding transactions just to immediately drop the event later
-	if !em.isAllowedToEmit(mutEvent, true, metric, selfParentHeader) {
-		return nil, nil
-	}
-
 	// Add txs
 	em.addTxs(mutEvent, sortedTxs)
-
-	// Check if event should be emitted
-	// Check only if no txs were added, since check in a case with added txs was performed above
-	if mutEvent.Txs().Len() == 0 {
-		if !em.isAllowedToEmit(mutEvent, mutEvent.Txs().Len() != 0, metric, selfParentHeader) {
-			return nil, nil
-		}
-	}
 
 	// calc Payload hash
 	mutEvent.SetPayloadHash(inter.CalcPayloadHash(mutEvent))
