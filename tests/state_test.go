@@ -38,9 +38,6 @@ var (
 		"Byzantium":         {},
 		"Frontier":          {},
 		"Homestead":         {},
-		"Istanbul":          {},
-		"Berlin":            {},
-		"London":            {},
 		"Prague":            {}, // < TODO: enable once supported (issue #65)
 	}
 )
