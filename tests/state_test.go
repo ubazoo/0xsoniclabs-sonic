@@ -18,13 +18,14 @@ package tests
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/carmen/go/state/gostate"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/tests"
-	"os"
-	"path/filepath"
-	"testing"
 )
 
 var (
@@ -37,6 +38,7 @@ var (
 		"Byzantium":         {},
 		"Frontier":          {},
 		"Homestead":         {},
+		"Prague":            {}, // < TODO: enable once supported (issue #65)
 	}
 )
 
