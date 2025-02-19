@@ -184,6 +184,9 @@ be gzipped.
 					Flags: []cli.Flag{
 						ModeFlag,
 						flags.SuppressFramePanicFlag,
+						flags.SubstateDbFlag,
+						flags.RecordingFlag,
+						flags.SubstateEncodingFlag,
 					},
 					Description: `
     sonictool --datadir=<datadir> events import <filenames> [--mode=validator]

@@ -6,6 +6,8 @@ import (
 	"github.com/0xsoniclabs/carmen/go/common/witness"
 	carmen "github.com/0xsoniclabs/carmen/go/state"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	recordSubstate "github.com/0xsoniclabs/substate"
+	"github.com/0xsoniclabs/substate/substate"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/stateless"
 	"github.com/ethereum/go-ethereum/core/tracing"
@@ -16,9 +18,19 @@ import (
 )
 
 func CreateCarmenStateDb(carmenStateDb carmen.VmStateDB) state.StateDB {
-	return &CarmenStateDB{
-		db: carmenStateDb,
+	statedb := &CarmenStateDB{db: carmenStateDb}
+
+	if recordSubstate.RecordReplay {
+		return &RecordCarmenStateDB{
+			CarmenStateDB:       statedb,
+			SubstatePreAlloc:    make(substate.WorldState),
+			SubstatePostAlloc:   make(substate.WorldState),
+			SubstateBlockHashes: make(map[uint64]common.Hash),
+			AccessedStorage:     make(map[common.Address]map[common.Hash]common.Hash),
+		}
 	}
+
+	return statedb
 }
 
 type CarmenStateDB struct {
@@ -350,4 +362,19 @@ func (c *CarmenStateDB) Release() {
 	if db, ok := c.db.(carmen.NonCommittableStateDB); ok {
 		db.Release()
 	}
+}
+
+// record-replay
+func (c *CarmenStateDB) GetSubstatePreAlloc() substate.WorldState {
+	return nil
+}
+
+// record-replay
+func (c *CarmenStateDB) GetSubstatePostAlloc() substate.WorldState {
+	return nil
+}
+
+// record-replay
+func (c *CarmenStateDB) GetSubstateBlockHashes() map[uint64]common.Hash {
+	return nil
 }

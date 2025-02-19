@@ -6,6 +6,7 @@ toolchain go1.22.3
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff
+	github.com/0xsoniclabs/substate v0.0.0-20250219184544-5e2f53b7dc91
 	github.com/0xsoniclabs/tosca v0.0.0-20250109073452-a7eb49bdbd45
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
@@ -72,6 +73,7 @@ require (
 	github.com/gofrs/flock v0.12.1 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
+	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb // indirect
 	github.com/google/pprof v0.0.0-20240910150728-a0b0bb1d4134 // indirect
 	github.com/google/uuid v1.6.0 // indirect

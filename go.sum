@@ -2,6 +2,8 @@ github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff h1:ItY2JgmM0
 github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff/go.mod h1:/u6oDZBv6eyPs9K7Ug5D4aL9l1Q7N43BnWEUPsvKmYw=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250130165002-2b3ee95747f9 h1:fWYdRUj9E8R8bpM0dkU2AmjewUobA2G1kjnoKEfXdrU=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250130165002-2b3ee95747f9/go.mod h1:p4knNH76zBuqbEfc6CbZTOnaQNU0WvhzW5f0qq6aMoU=
+github.com/0xsoniclabs/substate v0.0.0-20250219184544-5e2f53b7dc91 h1:WPfGN1JeEeCtSAM8eoLGfn346rITGDots1oh7z8dtgA=
+github.com/0xsoniclabs/substate v0.0.0-20250219184544-5e2f53b7dc91/go.mod h1:tg/lgvi4aaHTF0zKwhDDtZrNEfvC/c/bjxMNVxFhlMk=
 github.com/0xsoniclabs/tosca v0.0.0-20250109073452-a7eb49bdbd45 h1:4PD4GwrMVkEdBCDRdinviL4AvD4mYSsbeX1uAJ70NY0=
 github.com/0xsoniclabs/tosca v0.0.0-20250109073452-a7eb49bdbd45/go.mod h1:ZjONKDZS84n/Ne0Rlt56X4O3Xz3r4jRUB440p7UrPZ0=
 github.com/DataDog/zstd v1.5.6 h1:LbEglqepa/ipmmQJUDnSsfvA8e8IStVcGaFWDuxvGOY=
@@ -118,6 +120,8 @@ github.com/golang/protobuf v1.4.0-rc.2/go.mod h1:LlEzMj4AhA7rCAGe4KMBDvJI+AwstrU
 github.com/golang/protobuf v1.4.0-rc.4.0.20200313231945-b860323f09d0/go.mod h1:WU3c8KckQ9AFe+yFwt9sWVRKCVIyN9cPHBJSNnbL67w=
 github.com/golang/protobuf v1.4.0/go.mod h1:jodUvKwWbYaEsadDk5Fwe5c77LiNKVO9IDvqG2KuDX0=
 github.com/golang/protobuf v1.4.2/go.mod h1:oDoupMAO8OvCJWAcko0GGGIgR6R6ocIYbsSw735rRwI=
+github.com/golang/protobuf v1.5.4 h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=
+github.com/golang/protobuf v1.5.4/go.mod h1:lnTiLA8Wa4RWRcIUkrtSVa5nRhsEGBg48fD6rSs7xps=
 github.com/golang/snappy v0.0.4/go.mod h1:/XxbfmMg8lxefKM7IXC3fBNl/7bRcc72aCRzEWrmP2Q=
 github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb h1:PBC98N2aIaM3XXiurYmW7fx4GZkL8feAMVq7nEjURHk=
 github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb/go.mod h1:/XxbfmMg8lxefKM7IXC3fBNl/7bRcc72aCRzEWrmP2Q=

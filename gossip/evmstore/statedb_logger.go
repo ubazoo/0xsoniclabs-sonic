@@ -1,12 +1,13 @@
 package evmstore
 
 import (
+	"math/big"
+
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/holiman/uint256"
-	"math/big"
 )
 
 func WrapStateDbWithLogger(stateDb state.StateDB, logger *tracing.Hooks) state.StateDB {
@@ -19,7 +20,7 @@ func WrapStateDbWithLogger(stateDb state.StateDB, logger *tracing.Hooks) state.S
 
 type LoggingStateDB struct {
 	state.StateDB
-	logger *tracing.Hooks
+	logger         *tracing.Hooks
 	selfDestructed map[common.Address]struct{}
 }
 

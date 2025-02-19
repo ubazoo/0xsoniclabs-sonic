@@ -2,6 +2,7 @@ package state
 
 import (
 	"github.com/0xsoniclabs/carmen/go/common/witness"
+	"github.com/0xsoniclabs/substate/substate"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -28,4 +29,9 @@ type StateDB interface {
 	BeginBlock(number uint64)
 	EndBlock(number uint64)
 	Release()
+
+	//record-replay
+	GetSubstatePreAlloc() substate.WorldState
+	GetSubstatePostAlloc() substate.WorldState
+	GetSubstateBlockHashes() map[uint64]common.Hash
 }
