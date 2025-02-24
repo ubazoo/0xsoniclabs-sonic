@@ -69,3 +69,32 @@ func TestBitSet_String_PrintsListOfEntries(t *testing.T) {
 	b.Add(123)
 	require.Equal(t, "{1, 12, 123}", b.String())
 }
+
+func TestBitSet_MarshalJSON(t *testing.T) {
+	require := require.New(t)
+
+	var b BitSet[uint8]
+	b.Add(1)
+	b.Add(12)
+	b.Add(123)
+	data, err := b.MarshalJSON()
+	require.NoError(err)
+	require.Equal(`0x02100000000000000000000000000008`, string(data))
+}
+
+func TestBitSet_UnmarshalJSON(t *testing.T) {
+	require := require.New(t)
+
+	var b BitSet[uint8]
+	err := b.UnmarshalJSON([]byte(`"0x02100000000000000000000000000008"`))
+	require.NoError(err)
+	require.Equal([]uint8{1, 12, 123}, b.Entries())
+}
+
+func TestBitSet_InvalidUnmarshalJSON(t *testing.T) {
+	require := require.New(t)
+
+	var b BitSet[uint8]
+	err := b.UnmarshalJSON([]byte(`"g"`))
+	require.Error(err)
+}
