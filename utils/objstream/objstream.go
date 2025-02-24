@@ -1,4 +1,4 @@
-// This package provides a reader and write utility for encoding sequences of
+// This package provides reader and writer utilities for encoding sequences of
 // serializable objects into a single byte stream. The format is simply
 //
 //	(<size-of-object><serialized-object>)*

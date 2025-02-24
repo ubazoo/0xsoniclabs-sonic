@@ -12,17 +12,17 @@ import (
 )
 
 func TestReader_Read_FromEmptyStreamProducesEof(t *testing.T) {
-	reader := NewReader[*msg](bytes.NewReader(nil))
+	reader := NewReader[*testMsg](bytes.NewReader(nil))
 	require.ErrorIs(t, reader.Read(nil), io.EOF)
 }
 
 func TestReader_Read_CanReadEncodedMessage(t *testing.T) {
 	data := []byte{0x2, 0x1, 0x3}
-	reader := NewReader[*msg](bytes.NewReader(data))
+	reader := NewReader[*testMsg](bytes.NewReader(data))
 
-	var restored msg
+	var restored testMsg
 	require.NoError(t, reader.Read(&restored))
-	require.Equal(t, restored, msg([]byte{0x1, 0x3}))
+	require.Equal(t, restored, testMsg([]byte{0x1, 0x3}))
 
 	require.ErrorIs(t, reader.Read(&restored), io.EOF)
 }
@@ -41,9 +41,9 @@ func TestReader_Read_ReportsDeserializationError(t *testing.T) {
 func TestWriter_Write_EncodesMessageWithLengthPrefix(t *testing.T) {
 	buffer := bytes.Buffer{}
 	writer := bufio.NewWriter(&buffer)
-	out := NewWriter[msg](writer)
+	out := NewWriter[testMsg](writer)
 
-	require.NoError(t, out.Write(msg("hello")))
+	require.NoError(t, out.Write(testMsg("hello")))
 	require.NoError(t, writer.Flush())
 
 	require.Equal(t, []byte{0x5, 'h', 'e', 'l', 'l', 'o'}, buffer.Bytes())
@@ -70,16 +70,16 @@ func TestIntegration_CanEncodeAndDecodeListOfMessages(t *testing.T) {
 
 	buffer := bytes.Buffer{}
 	writer := bufio.NewWriter(&buffer)
-	out := NewWriter[msg](writer)
+	out := NewWriter[testMsg](writer)
 	for _, str := range input {
-		require.NoError(out.Write(msg(str)))
+		require.NoError(out.Write(testMsg(str)))
 	}
 	require.NoError(writer.Flush())
 
-	in := NewReader[*msg](bufio.NewReader(&buffer))
+	in := NewReader[*testMsg](bufio.NewReader(&buffer))
 	var output []string
 	for {
-		var str msg
+		var str testMsg
 		err := in.Read(&str)
 		if err == io.EOF {
 			break
@@ -91,13 +91,13 @@ func TestIntegration_CanEncodeAndDecodeListOfMessages(t *testing.T) {
 	require.Equal(input, output)
 }
 
-type msg string
+type testMsg string
 
-func (m msg) Serialize() ([]byte, error) {
+func (m testMsg) Serialize() ([]byte, error) {
 	return []byte(m), nil
 }
 
-func (m *msg) Deserialize(data []byte) error {
-	*m = msg(data)
+func (m *testMsg) Deserialize(data []byte) error {
+	*m = testMsg(data)
 	return nil
 }
