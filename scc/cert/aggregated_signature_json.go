@@ -8,17 +8,21 @@ import (
 	"github.com/0xsoniclabs/sonic/scc/cert/serialization"
 )
 
+// AggregatedSignatureJson is a JSON representation of an AggregatedSignature.
 type AggregatedSignatureJson[S Statement] struct {
-	// signers: []MemberId
-	Signers []byte `json:"signers" gencodec:"required"`
-	// signature: Signature
+	// signers:  BitSet[scc.MemberId]
+	Signers serialization.HexBytes `json:"signers" gencodec:"required"`
+	// signature: bls.Signature
 	Signature serialization.HexBytes96 `json:"signature" gencodec:"required"`
 }
 
+// String returns the JSON representation of the AggregatedSignatureJson.
 func (a AggregatedSignatureJson[S]) String() string {
 	return fmt.Sprintf(`{"signers":%v,"signature":"%v"}`, a.Signers, a.Signature)
 }
 
+// ToAggregatedSignature converts the AggregatedSignatureJson to an AggregatedSignature.
+// Returns an error if the signature is invalid.
 func (a AggregatedSignatureJson[S]) ToAggregatedSignature() (AggregatedSignature[S], error) {
 	bitset := BitSet[scc.MemberId]{}
 	bitset.Deserialize(a.Signers)
@@ -33,11 +37,10 @@ func (a AggregatedSignatureJson[S]) ToAggregatedSignature() (AggregatedSignature
 	}, nil
 }
 
-func AggregatedSignatureToJson[S Statement](a *AggregatedSignature[S]) (AggregatedSignatureJson[S], error) {
-	stringSigners := a.signers.Serialize()
-	signatures := a.signature.Serialize()
+// AggregatedSignatureToJson converts an AggregatedSignature to an AggregatedSignatureJson.
+func AggregatedSignatureToJson[S Statement](a AggregatedSignature[S]) AggregatedSignatureJson[S] {
 	return AggregatedSignatureJson[S]{
-		Signers:   stringSigners,
-		Signature: serialization.HexBytes96(signatures),
-	}, nil
+		Signers:   a.signers.Serialize(),
+		Signature: serialization.HexBytes96(a.signature.Serialize()),
+	}
 }

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert/serialization"
 	"github.com/stretchr/testify/require"
@@ -37,16 +36,6 @@ func TestAggregatedSignatureJson_ToAggregatedSignature_ValidSignature(t *testing
 
 }
 
-func TestAggregatedSignatureToJson(t *testing.T) {
-	newSign := bls.Signature{}
-	a := AggregatedSignature[testStatement]{
-		signers:   BitSet[scc.MemberId]{},
-		signature: newSign,
-	}
-	_, err := AggregatedSignatureToJson(&a)
-	require.NoError(t, err)
-}
-
 func TestAggregatedSignatureJson_EndToEnd(t *testing.T) {
 	require := require.New(t)
 	key1 := bls.NewPrivateKey()
@@ -60,8 +49,7 @@ func TestAggregatedSignatureJson_EndToEnd(t *testing.T) {
 	require.NoError(agg.Add(1, sig1))
 	require.NoError(agg.Add(2, sig2))
 
-	json, err := AggregatedSignatureToJson(&agg)
-	require.NoError(err)
+	json := AggregatedSignatureToJson(agg)
 
 	agg2, err := json.ToAggregatedSignature()
 	require.NoError(err)
