@@ -12,7 +12,7 @@ import (
 func TestAggregatedSignatureJson_String(t *testing.T) {
 	a := AggregatedSignatureJson[testStatement]{}
 	zeroHex := serialization.HexBytes96{}
-	expected := fmt.Sprintf(`{"signers":[],"signature":"%v"}`, zeroHex.String())
+	expected := fmt.Sprintf(`{"signers":"0x","signature":"%v"}`, zeroHex.String())
 	require.Equal(t, expected, a.String())
 }
 
@@ -47,9 +47,14 @@ func TestAggregatedSignatureJson_EndToEnd(t *testing.T) {
 
 	agg := AggregatedSignature[testStatement]{}
 	require.NoError(agg.Add(1, sig1))
-	require.NoError(agg.Add(2, sig2))
+	require.NoError(agg.Add(123, sig2))
 
 	json := AggregatedSignatureToJson(agg)
+	str := json.String()
+	wantString := fmt.Sprintf(`{"signers":"%v","signature":"%v"}`,
+		serialization.HexBytes(agg.signers.mask).String(),
+		serialization.HexBytes96(agg.signature.Serialize()))
+	require.Equal(wantString, str)
 
 	agg2, err := json.ToAggregatedSignature()
 	require.NoError(err)

@@ -8,7 +8,7 @@ import (
 	"github.com/0xsoniclabs/sonic/scc/cert/serialization"
 )
 
-// AggregatedSignatureJson is a JSON representation of an AggregatedSignature.
+// AggregatedSignatureJson is a JSON friendly representation of an AggregatedSignature.
 type AggregatedSignatureJson[S Statement] struct {
 	// signers:  BitSet[scc.MemberId]
 	Signers serialization.HexBytes `json:"signers" gencodec:"required"`
@@ -16,9 +16,9 @@ type AggregatedSignatureJson[S Statement] struct {
 	Signature serialization.HexBytes96 `json:"signature" gencodec:"required"`
 }
 
-// String returns the JSON representation of the AggregatedSignatureJson.
+// String returns the JSON string representation of the AggregatedSignatureJson.
 func (a AggregatedSignatureJson[S]) String() string {
-	return fmt.Sprintf(`{"signers":%v,"signature":"%v"}`, a.Signers, a.Signature)
+	return fmt.Sprintf(`{"signers":"%v","signature":"%v"}`, a.Signers, a.Signature)
 }
 
 // ToAggregatedSignature converts the AggregatedSignatureJson to an AggregatedSignature.
