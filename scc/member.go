@@ -2,6 +2,7 @@ package scc
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 
 	"github.com/0xsoniclabs/sonic/scc/bls"
@@ -71,4 +72,24 @@ func DeserializeMember(data EncodedMember) (Member, error) {
 	}
 	m.VotingPower = binary.BigEndian.Uint64(data[48+96:])
 	return m, nil
+}
+
+// MarshalJson converts a member to a JSON-friendly representation.
+func (m *Member) MarshalJson() []byte {
+	json := MemberToJson(*m)
+	return []byte(json.String())
+}
+
+// UnmarshalJson converts a JSON-friendly representation to a member.
+func (m *Member) UnmarshalJson(data []byte) error {
+	var memberJson *MemberJson = &MemberJson{}
+	err := json.Unmarshal(data, memberJson)
+	if err != nil {
+		return err
+	}
+	*m, err = memberJson.ToMember()
+	if err != nil {
+		return err
+	}
+	return nil
 }

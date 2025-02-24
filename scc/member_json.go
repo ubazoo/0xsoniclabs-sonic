@@ -1,9 +1,8 @@
-package cert
+package scc
 
 import (
 	"fmt"
 
-	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/utils/jsonhex"
 )
@@ -22,16 +21,16 @@ func (m MemberJson) String() string {
 }
 
 // ToMember converts the MemberJson to a scc.Member.
-func (m MemberJson) ToMember() (scc.Member, error) {
+func (m MemberJson) ToMember() (Member, error) {
 	publicKey, err := bls.DeserializePublicKey(m.PublicKey)
 	if err != nil {
-		return scc.Member{}, err
+		return Member{}, err
 	}
 	proofOfPossession, err := bls.DeserializeSignature(m.ProofOfPossession)
 	if err != nil {
-		return scc.Member{}, err
+		return Member{}, err
 	}
-	return scc.Member{
+	return Member{
 		PublicKey:         publicKey,
 		ProofOfPossession: proofOfPossession,
 		VotingPower:       m.Weight,
@@ -39,7 +38,7 @@ func (m MemberJson) ToMember() (scc.Member, error) {
 }
 
 // MemberToJson converts a scc.Member to a MemberJson.
-func MemberToJson(m scc.Member) MemberJson {
+func MemberToJson(m Member) MemberJson {
 	return MemberJson{
 		PublicKey:         jsonhex.Bytes48(m.PublicKey.Serialize()),
 		ProofOfPossession: jsonhex.Bytes96(m.ProofOfPossession.Serialize()),

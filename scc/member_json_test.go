@@ -1,10 +1,9 @@
-package cert
+package scc
 
 import (
 	"fmt"
 	"testing"
 
-	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/utils/jsonhex"
 	"github.com/stretchr/testify/require"
@@ -50,7 +49,7 @@ func TestMemberJson_ToMember_Valid(t *testing.T) {
 
 func TestMemberJson_EndToEnd(t *testing.T) {
 	key := bls.NewPrivateKey()
-	m := scc.Member{
+	m := Member{
 		PublicKey:         key.PublicKey(),
 		ProofOfPossession: key.GetProofOfPossession(),
 		VotingPower:       uint64(0),

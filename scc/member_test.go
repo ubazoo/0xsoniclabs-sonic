@@ -119,3 +119,19 @@ func TestMember_Deserialize_DetectsEncodingErrors(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "invalid proof of possession")
 }
+
+func TestMember_ConvertToAndFromJson(t *testing.T) {
+	key := bls.NewPrivateKey()
+	member := Member{
+		PublicKey:         key.PublicKey(),
+		ProofOfPossession: key.GetProofOfPossession(),
+		VotingPower:       12,
+	}
+
+	json := member.MarshalJson()
+
+	var member2 *Member = &Member{}
+	err := member2.UnmarshalJson(json)
+	require.NoError(t, err)
+	require.Equal(t, member, *member2)
+}
