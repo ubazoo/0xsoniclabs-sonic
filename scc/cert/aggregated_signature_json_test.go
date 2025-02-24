@@ -5,21 +5,21 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc/bls"
-	"github.com/0xsoniclabs/sonic/scc/cert/serialization"
+	"github.com/0xsoniclabs/sonic/utils/jsonhex"
 	"github.com/stretchr/testify/require"
 )
 
 func TestAggregatedSignatureJson_String(t *testing.T) {
 	a := AggregatedSignatureJson[testStatement]{}
-	zeroHex := serialization.HexBytes96{}
-	expected := fmt.Sprintf(`{"signers":"0x","signature":"%v"}`, zeroHex.String())
+	zeroHex := jsonhex.Bytes96{}
+	expected := fmt.Sprintf(`{"signers":"null","signature":"%v"}`, zeroHex.String())
 	require.Equal(t, expected, a.String())
 }
 
 func TestAggregatedSignatureJson_ToAggregatedSignature_InvalidSignature(t *testing.T) {
 	a := AggregatedSignatureJson[testStatement]{
 		Signers:   []byte{},
-		Signature: serialization.HexBytes96{},
+		Signature: jsonhex.Bytes96{},
 	}
 	_, err := a.ToAggregatedSignature()
 	require.Error(t, err)
@@ -29,7 +29,7 @@ func TestAggregatedSignatureJson_ToAggregatedSignature_ValidSignature(t *testing
 	newSign := bls.Signature{}
 	a := AggregatedSignatureJson[testStatement]{
 		Signers:   []byte{0x01},
-		Signature: serialization.HexBytes96(newSign.Serialize()),
+		Signature: jsonhex.Bytes96(newSign.Serialize()),
 	}
 	_, err := a.ToAggregatedSignature()
 	require.NoError(t, err)
@@ -52,8 +52,8 @@ func TestAggregatedSignatureJson_EndToEnd(t *testing.T) {
 	json := AggregatedSignatureToJson(agg)
 	str := json.String()
 	wantString := fmt.Sprintf(`{"signers":"%v","signature":"%v"}`,
-		serialization.HexBytes(agg.signers.mask).String(),
-		serialization.HexBytes96(agg.signature.Serialize()))
+		jsonhex.Bytes(agg.signers.mask).String(),
+		jsonhex.Bytes96(agg.signature.Serialize()))
 	require.Equal(wantString, str)
 
 	agg2, err := json.ToAggregatedSignature()
