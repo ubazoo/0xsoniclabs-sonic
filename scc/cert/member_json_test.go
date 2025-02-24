@@ -6,21 +6,21 @@ import (
 
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
-	"github.com/0xsoniclabs/sonic/scc/cert/serialization"
+	"github.com/0xsoniclabs/sonic/utils/jsonhex"
 	"github.com/stretchr/testify/require"
 )
 
 func TestMemberJson_String(t *testing.T) {
 	m := MemberJson{}
 	expected := fmt.Sprintf(`{"publicKey":"%v","proofOfPossession":"%v","weight":%d}`,
-		serialization.HexBytes48{}, serialization.HexBytes96{}, uint64(0))
+		jsonhex.Bytes48{}, jsonhex.Bytes96{}, uint64(0))
 	require.Equal(t, expected, m.String())
 }
 
 func TestMemberJson_ToMember_InvalidPublicKey(t *testing.T) {
 	m := MemberJson{
-		PublicKey:         serialization.HexBytes48{},
-		ProofOfPossession: serialization.HexBytes96(bls.Signature{}.Serialize()),
+		PublicKey:         jsonhex.Bytes48{},
+		ProofOfPossession: jsonhex.Bytes96(bls.Signature{}.Serialize()),
 		Weight:            uint64(0),
 	}
 	_, err := m.ToMember()
@@ -29,8 +29,8 @@ func TestMemberJson_ToMember_InvalidPublicKey(t *testing.T) {
 
 func TestMemberJson_ToMember_InvalidProofOfPossession(t *testing.T) {
 	m := MemberJson{
-		PublicKey:         serialization.HexBytes48(bls.NewPrivateKey().PublicKey().Serialize()),
-		ProofOfPossession: serialization.HexBytes96{},
+		PublicKey:         jsonhex.Bytes48(bls.NewPrivateKey().PublicKey().Serialize()),
+		ProofOfPossession: jsonhex.Bytes96{},
 		Weight:            uint64(0),
 	}
 	_, err := m.ToMember()
@@ -40,8 +40,8 @@ func TestMemberJson_ToMember_InvalidProofOfPossession(t *testing.T) {
 func TestMemberJson_ToMember_Valid(t *testing.T) {
 	key := bls.NewPrivateKey()
 	m := MemberJson{
-		PublicKey:         serialization.HexBytes48(key.PublicKey().Serialize()),
-		ProofOfPossession: serialization.HexBytes96(key.Sign([]byte{}).Serialize()),
+		PublicKey:         jsonhex.Bytes48(key.PublicKey().Serialize()),
+		ProofOfPossession: jsonhex.Bytes96(key.Sign([]byte{}).Serialize()),
 		Weight:            uint64(0),
 	}
 	_, err := m.ToMember()
@@ -59,8 +59,8 @@ func TestMemberJson_EndToEnd(t *testing.T) {
 	json := MemberToJson(m)
 	str := json.String()
 	wantString := fmt.Sprintf(`{"publicKey":"%v","proofOfPossession":"%v","weight":%d}`,
-		serialization.HexBytes48(key.PublicKey().Serialize()),
-		serialization.HexBytes96(key.GetProofOfPossession().Serialize()),
+		jsonhex.Bytes48(key.PublicKey().Serialize()),
+		jsonhex.Bytes96(key.GetProofOfPossession().Serialize()),
 		uint64(0))
 	require.Equal(t, wantString, str)
 

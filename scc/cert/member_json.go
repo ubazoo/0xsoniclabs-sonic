@@ -5,14 +5,14 @@ import (
 
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
-	"github.com/0xsoniclabs/sonic/scc/cert/serialization"
+	"github.com/0xsoniclabs/sonic/utils/jsonhex"
 )
 
 // MemberJson is a JSON friendly representation of a scc.Member.
 type MemberJson struct {
-	PublicKey         serialization.HexBytes48 `json:"publicKey" gencodec:"required"`
-	ProofOfPossession serialization.HexBytes96 `json:"proofOfPossession" gencodec:"required"`
-	Weight            uint64                   `json:"weight" gencodec:"required"`
+	PublicKey         jsonhex.Bytes48 `json:"publicKey" gencodec:"required"`
+	ProofOfPossession jsonhex.Bytes96 `json:"proofOfPossession" gencodec:"required"`
+	Weight            uint64          `json:"weight" gencodec:"required"`
 }
 
 // String returns the JSON string representation of the MemberJson.
@@ -41,8 +41,8 @@ func (m MemberJson) ToMember() (scc.Member, error) {
 // MemberToJson converts a scc.Member to a MemberJson.
 func MemberToJson(m scc.Member) MemberJson {
 	return MemberJson{
-		PublicKey:         serialization.HexBytes48(m.PublicKey.Serialize()),
-		ProofOfPossession: serialization.HexBytes96(m.ProofOfPossession.Serialize()),
+		PublicKey:         jsonhex.Bytes48(m.PublicKey.Serialize()),
+		ProofOfPossession: jsonhex.Bytes96(m.ProofOfPossession.Serialize()),
 		Weight:            m.VotingPower,
 	}
 }
