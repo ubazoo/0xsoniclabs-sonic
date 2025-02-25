@@ -90,7 +90,9 @@ func TestStore_EnumerateCommitteeCertificates_ReturnsAllCertificates(t *testing.
 		}
 		restored := []CommitteeCertificate{}
 		for c := range store.EnumerateCommitteeCertificates(first) {
-			restored = append(restored, c)
+			cur, err := c.Unwrap()
+			require.NoError(err)
+			restored = append(restored, cur)
 			if len(restored) == 2 {
 				break
 			}
@@ -198,7 +200,9 @@ func TestStore_EnumerateBlockCertificates_ReturnsAllCertificates(t *testing.T) {
 		}
 		restored := []BlockCertificate{}
 		for c := range store.EnumerateBlockCertificates(first) {
-			restored = append(restored, c)
+			cur, err := c.Unwrap()
+			require.NoError(err)
+			restored = append(restored, cur)
 			if len(restored) == 2 {
 				break
 			}
