@@ -77,9 +77,7 @@ func DeserializeMember(data EncodedMember) (Member, error) {
 // MarshalJson converts a member to a JSON-friendly representation.
 func (m *Member) MarshalJson() []byte {
 	json := MemberToJson(*m)
-	str := fmt.Sprintf(`{"publicKey":"%v","proofOfPossession":"%v","weight":%d}`,
-		json.PublicKey, json.ProofOfPossession, json.Weight)
-	return []byte(str)
+	return []byte(json.String())
 }
 
 // UnmarshalJson converts a JSON-friendly representation to a member.
