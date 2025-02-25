@@ -7,6 +7,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/0xsoniclabs/sonic/utils/result"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/kvdb"
 	"github.com/ethereum/go-ethereum/log"
@@ -41,8 +42,9 @@ func (s *Store) GetCommitteeCertificate(period scc.Period) (CommitteeCertificate
 
 // EnumerateCommitteeCertificates iterates over all committee certificates
 // starting from the given period. The certificates are yielded in ascending
-// order of period. The iteration also stops when there is a decoding error.
-func (s *Store) EnumerateCommitteeCertificates(first scc.Period) iter.Seq[CommitteeCertificate] {
+// order of period. If an error occurs during iteration, it is yielded as the
+// last result.
+func (s *Store) EnumerateCommitteeCertificates(first scc.Period) iter.Seq[result.T[CommitteeCertificate]] {
 	return enumerateCertificates[cert.CommitteeStatement](
 		getCommitteeCertificateKey(first),
 		s.table.CommitteeCertificates,
@@ -71,8 +73,9 @@ func (s *Store) GetBlockCertificate(block idx.Block) (BlockCertificate, error) {
 
 // EnumerateBlockCertificates iterates over all block certificates starting from
 // the given block number. The certificates are yielded in ascending order of
-// block number. The iteration also stops when there is a decoding error.
-func (s *Store) EnumerateBlockCertificates(first idx.Block) iter.Seq[BlockCertificate] {
+// block number. If an error occurs during iteration, it is yielded as the
+// last result.
+func (s *Store) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[BlockCertificate]] {
 	return enumerateCertificates[cert.BlockStatement](
 		getBlockCertificateKey(first),
 		s.table.BlockCertificates,
@@ -127,25 +130,39 @@ func getCertificate[S cert.Statement](
 
 // enumerateCertificates iterates over all certificates in the key/value store
 // starting from the given key. The certificates are yielded in ascending order
-// of the key. The iteration also stops when there is a decoding error.
+// of the key. If an error occurs during iteration, it is yielded as the last
+// result.
 func enumerateCertificates[S cert.Statement](
 	first []byte,
 	table kvdb.Store,
 	log log.Logger,
-) iter.Seq[cert.Certificate[S]] {
-	return func(yield func(cert.Certificate[S]) bool) {
+) iter.Seq[result.T[cert.Certificate[S]]] {
+	return func(yield func(result.T[cert.Certificate[S]]) bool) {
 		it := table.NewIterator(nil, first)
 		defer it.Release()
 		var res cert.Certificate[S]
 		for it.Next() {
+			// stop iteration if there is an error in the DB iterator
+			if it.Error() != nil {
+				log.Warn("Failed to iterate over certificates", "err", it.Error())
+				yield(result.Error[cert.Certificate[S]](it.Error()))
+				return
+			}
 			data := it.Value()
 			if err := res.Deserialize(data); err != nil {
-				log.Warn("Failed to deserialize committee certificate", "err", err)
+				log.Warn("Failed to deserialize certificate", "err", err)
+				yield(result.Error[cert.Certificate[S]](err))
 				return
 			}
-			if !yield(res) {
+			if !yield(result.New(res)) {
 				return
 			}
+		}
+		// check for errors after the loop to catch any errors that may have
+		// occurred after the last successful iteration
+		if it.Error() != nil {
+			log.Warn("Failed to iterate over certificates", "err", it.Error())
+			yield(result.Error[cert.Certificate[S]](it.Error()))
 		}
 	}
 }
