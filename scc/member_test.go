@@ -1,11 +1,13 @@
 package scc
 
 import (
+	"fmt"
 	"math"
 	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc/bls"
+	"github.com/0xsoniclabs/sonic/utils/jsonhex"
 	"github.com/stretchr/testify/require"
 )
 
@@ -134,4 +136,15 @@ func TestMember_ConvertToAndFromJson(t *testing.T) {
 	err := member2.UnmarshalJson(json)
 	require.NoError(t, err)
 	require.Equal(t, member, *member2)
+}
+
+func TestMember_UnmarshalJson_FailsWithInvalidKeys(t *testing.T) {
+	invalidJson := []byte(`{"publicKey":"invalid","proofOfPossession":"invalid","weight":0}`)
+	m := Member{}
+	err := m.UnmarshalJson(invalidJson)
+	require.Error(t, err)
+	invalidJson = []byte(fmt.Sprintf(`{"publicKey":"%v","proofOfPossession":"%v","weight":0}`,
+		jsonhex.Bytes48{}.String(), jsonhex.Bytes96{}.String()))
+	err = m.UnmarshalJson(invalidJson)
+	require.Error(t, err)
 }

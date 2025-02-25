@@ -9,14 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestMemberJson_String(t *testing.T) {
+func TestMemberJson_String_ProducesExpectedStringFormat(t *testing.T) {
 	m := MemberJson{}
 	expected := fmt.Sprintf(`{"publicKey":"%v","proofOfPossession":"%v","weight":%d}`,
 		jsonhex.Bytes48{}, jsonhex.Bytes96{}, uint64(0))
 	require.Equal(t, expected, m.String())
 }
 
-func TestMemberJson_ToMember_InvalidPublicKey(t *testing.T) {
+func TestMemberJson_ToMember_FailsOnInvalidPublicKey(t *testing.T) {
 	m := MemberJson{
 		PublicKey:         jsonhex.Bytes48{},
 		ProofOfPossession: jsonhex.Bytes96(bls.Signature{}.Serialize()),
@@ -26,7 +26,7 @@ func TestMemberJson_ToMember_InvalidPublicKey(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestMemberJson_ToMember_InvalidProofOfPossession(t *testing.T) {
+func TestMemberJson_ToMember_FailsOnInvalidProofOfPossession(t *testing.T) {
 	m := MemberJson{
 		PublicKey:         jsonhex.Bytes48(bls.NewPrivateKey().PublicKey().Serialize()),
 		ProofOfPossession: jsonhex.Bytes96{},
@@ -36,7 +36,7 @@ func TestMemberJson_ToMember_InvalidProofOfPossession(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestMemberJson_ToMember_Valid(t *testing.T) {
+func TestMemberJson_ToMember_AcceptsValidJson(t *testing.T) {
 	key := bls.NewPrivateKey()
 	m := MemberJson{
 		PublicKey:         jsonhex.Bytes48(key.PublicKey().Serialize()),

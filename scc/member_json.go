@@ -9,9 +9,9 @@ import (
 
 // MemberJson is a JSON friendly representation of a scc.Member.
 type MemberJson struct {
-	PublicKey         jsonhex.Bytes48 `json:"publicKey" gencodec:"required"`
-	ProofOfPossession jsonhex.Bytes96 `json:"proofOfPossession" gencodec:"required"`
-	Weight            uint64          `json:"weight" gencodec:"required"`
+	PublicKey         jsonhex.Bytes48 `json:"publicKey"`
+	ProofOfPossession jsonhex.Bytes96 `json:"proofOfPossession"`
+	Weight            uint64          `json:"weight"`
 }
 
 // String returns the JSON string representation of the MemberJson.
