@@ -13,8 +13,8 @@ func New[V any](value V) T[V] {
 }
 
 // Error creates a new result with an error. This is the type of result that is
-// returned when the operation is unsuccessful. Note, passing nil will as a
-// an error will result in a non-error result containing the zero value.
+// returned when the operation is unsuccessful. Note, passing nil as an error
+// will result in a non-error result containing the zero value.
 func Error[V any](err error) T[V] {
 	return T[V]{err: err}
 }
