@@ -5,9 +5,12 @@ import (
 
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/stretchr/testify/require"
 )
+
+var _ scc_node.Store = (*Store)(nil)
 
 func TestStore_GetCommitteeCertificate_FailsIfNotPresent(t *testing.T) {
 	require := require.New(t)
