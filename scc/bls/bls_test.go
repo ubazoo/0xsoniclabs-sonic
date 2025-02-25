@@ -337,6 +337,8 @@ func TestBsl_AggregatedSignaturesCanBeVerifiedAgainstPublicKeys(t *testing.T) {
 
 // TODO: test known signatures
 
+// func
+
 // --- Benchmarks -------------------------------------------------------------
 
 func BenchmarkKey_Generation(b *testing.B) {

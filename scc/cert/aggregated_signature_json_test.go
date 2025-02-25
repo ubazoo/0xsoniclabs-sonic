@@ -52,8 +52,8 @@ func TestAggregatedSignatureJson_EndToEnd(t *testing.T) {
 	json := AggregatedSignatureToJson(agg)
 	str := json.String()
 	wantString := fmt.Sprintf(`{"signers":"%v","signature":"%v"}`,
-		jsonhex.Bytes(agg.signers.mask).String(),
-		jsonhex.Bytes96(agg.signature.Serialize()))
+		jsonhex.Bytes(agg.Signers.mask).String(),
+		jsonhex.Bytes96(agg.Signature.Serialize()))
 	require.Equal(wantString, str)
 
 	agg2, err := json.ToAggregatedSignature()

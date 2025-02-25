@@ -1,6 +1,7 @@
 package cert
 
 import (
+	"encoding/json"
 	"math"
 	"testing"
 
@@ -238,6 +239,23 @@ func TestAggregatedSignature_String_ListsKeyProperties(t *testing.T) {
 	print = agg.String()
 	require.Contains(print, "signers={1, 7}")
 	require.Contains(print, "signature=0xb96b..b00c")
+}
+
+func TestAggregatedSignature_CanMarshalAndUnmarshalJSON(t *testing.T) {
+	require := require.New(t)
+	stmt := testStatement(1)
+
+	agg := AggregatedSignature[testStatement]{}
+	require.NoError(agg.Add(1, Sign(stmt, bls.NewPrivateKeyForTests(1))))
+
+	data, err := json.Marshal(agg)
+	require.NoError(err)
+
+	var parsed AggregatedSignature[testStatement]
+	err = json.Unmarshal(data, &parsed)
+	require.NoError(err)
+
+	require.Equal(agg, parsed)
 }
 
 func newMember(key bls.PrivateKey, power uint64) scc.Member {

@@ -145,9 +145,9 @@ func (s *BlockStatement) deserialize(data []byte) (*pb.AggregatedSignature, erro
 func toProtoSignature[S Statement](
 	signature *AggregatedSignature[S],
 ) *pb.AggregatedSignature {
-	sig := signature.signature.Serialize()
+	sig := signature.Signature.Serialize()
 	return &pb.AggregatedSignature{
-		SignerMask: signature.signers.mask,
+		SignerMask: signature.Signers.mask,
 		Signature:  sig[:],
 	}
 }
@@ -169,7 +169,7 @@ func fromProtoSignature[S Statement](
 	}
 
 	return AggregatedSignature[S]{
-		signers:   BitSet[scc.MemberId]{mask: pb.SignerMask},
-		signature: signature,
+		Signers:   BitSet[scc.MemberId]{mask: pb.SignerMask},
+		Signature: signature,
 	}, nil
 }

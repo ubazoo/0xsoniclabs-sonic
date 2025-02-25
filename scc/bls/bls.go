@@ -34,6 +34,7 @@ import (
 	"crypto/rand"
 	"fmt"
 
+	"github.com/0xsoniclabs/sonic/utils/jsonhex"
 	blst "github.com/supranational/blst/bindings/go"
 )
 
@@ -241,4 +242,22 @@ func (k Signature) Serialize() [96]byte {
 // String returns the signature as a hexadecimal string prefixed with "0x".
 func (k Signature) String() string {
 	return fmt.Sprintf("0x%x", k.Serialize())
+}
+
+func (k Signature) MarshalJSON() ([]byte, error) {
+	json := jsonhex.Bytes96(k.Serialize())
+	return json.MarshalJSON()
+}
+
+func (k *Signature) UnmarshalJSON(data []byte) error {
+	var json jsonhex.Bytes96
+	if err := json.UnmarshalJSON(data); err != nil {
+		return err
+	}
+	sig, err := DeserializeSignature([96]byte(json))
+	if err != nil {
+		return err
+	}
+	*k = sig
+	return nil
 }

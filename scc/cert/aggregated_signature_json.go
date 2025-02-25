@@ -11,9 +11,9 @@ import (
 // AggregatedSignatureJson is a JSON friendly representation of an AggregatedSignature.
 type AggregatedSignatureJson[S Statement] struct {
 	// signers:  BitSet[scc.MemberId]
-	Signers jsonhex.Bytes `json:"signers" gencodec:"required"`
+	Signers jsonhex.Bytes `json:"signers"`
 	// signature: bls.Signature
-	Signature jsonhex.Bytes96 `json:"signature" gencodec:"required"`
+	Signature jsonhex.Bytes96 `json:"signature"`
 }
 
 // String returns the JSON string representation of the AggregatedSignatureJson.
@@ -32,15 +32,15 @@ func (a AggregatedSignatureJson[S]) ToAggregatedSignature() (AggregatedSignature
 	}
 
 	return AggregatedSignature[S]{
-		signers:   bitset,
-		signature: signature,
+		Signers:   bitset,
+		Signature: signature,
 	}, nil
 }
 
 // AggregatedSignatureToJson converts an AggregatedSignature to an AggregatedSignatureJson.
 func AggregatedSignatureToJson[S Statement](a AggregatedSignature[S]) AggregatedSignatureJson[S] {
 	return AggregatedSignatureJson[S]{
-		Signers:   a.signers.mask,
-		Signature: jsonhex.Bytes96(a.signature.Serialize()),
+		Signers:   a.Signers.mask,
+		Signature: jsonhex.Bytes96(a.Signature.Serialize()),
 	}
 }
