@@ -1,8 +1,9 @@
 package genesis
 
 import (
-	"github.com/Fantom-foundation/lachesis-base/hash"
 	"io"
+
+	"github.com/0xsoniclabs/consensus/hash"
 
 	"github.com/0xsoniclabs/sonic/inter/ibr"
 	"github.com/0xsoniclabs/sonic/inter/ier"
@@ -35,7 +36,7 @@ type (
 	}
 	SignedMetadata struct {
 		Signature []byte
-		Hashes []byte
+		Hashes    []byte
 	}
 	Genesis struct {
 		Header
