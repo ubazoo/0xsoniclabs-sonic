@@ -24,7 +24,7 @@ func TestCommitteeCertificateJson_ToCommitteeCertificate_ConvertsToHealthyCertif
 		Signature: sig,
 	}
 
-	got := c.ToCommitteeCertificate()
+	got := c.toCertificate()
 	aggregatedSignature := cert.NewAggregatedSignature[cert.CommitteeStatement](
 		c.Signers,
 		c.Signature,
@@ -57,7 +57,7 @@ func TestCommitteeCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
 	)
 
 	// encode
-	certJson := committeeCertificateToJson(c)
+	certJson := toJsonCommitteeCertificate(c)
 	data, err := json.Marshal(certJson)
 	require.NoError(err)
 
@@ -67,7 +67,7 @@ func TestCommitteeCertificateJson_CanBeJsonEncodedAndDecoded(t *testing.T) {
 	require.NoError(err)
 
 	// check
-	cert := certJson2.ToCommitteeCertificate()
+	cert := certJson2.toCertificate()
 	require.Equal(c, cert)
 }
 
@@ -93,6 +93,6 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 		Signers:   bitSet,
 		Signature: sig,
 	}
-	got := committeeCertificateToJson(c)
+	got := toJsonCommitteeCertificate(c)
 	require.Equal(want, got)
 }
