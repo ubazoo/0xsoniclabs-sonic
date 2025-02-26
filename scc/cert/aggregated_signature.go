@@ -14,6 +14,25 @@ type AggregatedSignature[S Statement] struct {
 	signature bls.Signature
 }
 
+// NewAggregatedSignature creates a new aggregated signature using the given signers
+// and signature. All the parameters are shallow copied.
+func NewAggregatedSignature[S Statement](
+	signers BitSet[scc.MemberId],
+	signature bls.Signature) AggregatedSignature[S] {
+	return AggregatedSignature[S]{signers: signers, signature: signature}
+}
+
+// Signers returns the signers of the aggregated signature.
+// The returned set of signers is a shallow copy of the internal set.
+func (s *AggregatedSignature[S]) Signers() BitSet[scc.MemberId] {
+	return s.signers
+}
+
+// Signature returns the aggregated BLS signature of the statement.
+func (s *AggregatedSignature[S]) Signature() bls.Signature {
+	return s.signature
+}
+
 // Add adds a signature from a member to the aggregated signature. The id
 // identifies the member within the signing committee. The signature is the BLS
 // signature of the statement produced by the respective member. The operation
