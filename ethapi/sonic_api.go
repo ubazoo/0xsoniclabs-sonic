@@ -39,13 +39,13 @@ func (s *PublicSccApi) GetCommitteeCertificates(
 ) ([]committeeCertificateJson, error) {
 	if first.IsLatest() {
 		cert, err := s.backend.GetLatestCommitteeCertificate()
-		return []committeeCertificateJson{{cert}}, err
+		return []committeeCertificateJson{committeeCertificateToJson(cert)}, err
 	}
 	return getCertificates(
 		ctx,
 		s.backend.EnumerateCommitteeCertificates(first.Index()),
 		func(cert cert.CommitteeCertificate) committeeCertificateJson {
-			return committeeCertificateJson{cert}
+			return committeeCertificateToJson(cert)
 		},
 		maxResults,
 		s.maxResults,
@@ -62,13 +62,13 @@ func (s *PublicSccApi) GetBlockCertificates(
 ) ([]blockCertificateJson, error) {
 	if first.IsLatest() {
 		cert, err := s.backend.GetLatestBlockCertificate()
-		return []blockCertificateJson{{cert}}, err
+		return []blockCertificateJson{blockCertificateToJson(cert)}, err
 	}
 	return getCertificates(
 		ctx,
 		s.backend.EnumerateBlockCertificates(first.Index()),
 		func(cert cert.BlockCertificate) blockCertificateJson {
-			return blockCertificateJson{cert}
+			return blockCertificateToJson(cert)
 		},
 		maxResults,
 		s.maxResults,
@@ -81,16 +81,6 @@ type SccApiBackend interface {
 
 	GetLatestBlockCertificate() (cert.BlockCertificate, error)
 	EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]]
-}
-
-// TODO: replace with actual JSON serialization
-
-type committeeCertificateJson struct {
-	cert.CommitteeCertificate
-}
-
-type blockCertificateJson struct {
-	cert.BlockCertificate
 }
 
 // --- Period and Block Numbers -----------------------------------------------
