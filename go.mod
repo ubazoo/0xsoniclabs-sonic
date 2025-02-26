@@ -6,7 +6,7 @@ toolchain go1.22.3
 
 require (
 	github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff
-	github.com/0xsoniclabs/substate v0.0.0-20250219184544-5e2f53b7dc91
+	github.com/0xsoniclabs/substate v0.0.0-20250226110130-2d8888bf47c6
 	github.com/0xsoniclabs/tosca v0.0.0-20250109073452-a7eb49bdbd45
 	github.com/Fantom-foundation/lachesis-base v0.0.0-20240116072301-a75735c4ef00
 	github.com/cespare/cp v1.1.1
@@ -31,7 +31,7 @@ require (
 	github.com/tyler-smith/go-bip39 v1.1.0
 	github.com/uber/jaeger-client-go v2.30.0+incompatible
 	github.com/uber/jaeger-lib v2.4.1+incompatible
-	go.uber.org/mock v0.4.0
+	go.uber.org/mock v0.5.0
 	golang.org/x/sys v0.25.0
 	gopkg.in/urfave/cli.v1 v1.20.0
 )

@@ -2,8 +2,8 @@ github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff h1:ItY2JgmM0
 github.com/0xsoniclabs/carmen/go v0.0.0-20250113102336-97f8b8616eff/go.mod h1:/u6oDZBv6eyPs9K7Ug5D4aL9l1Q7N43BnWEUPsvKmYw=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250130165002-2b3ee95747f9 h1:fWYdRUj9E8R8bpM0dkU2AmjewUobA2G1kjnoKEfXdrU=
 github.com/0xsoniclabs/go-ethereum v0.0.0-20250130165002-2b3ee95747f9/go.mod h1:p4knNH76zBuqbEfc6CbZTOnaQNU0WvhzW5f0qq6aMoU=
-github.com/0xsoniclabs/substate v0.0.0-20250219184544-5e2f53b7dc91 h1:WPfGN1JeEeCtSAM8eoLGfn346rITGDots1oh7z8dtgA=
-github.com/0xsoniclabs/substate v0.0.0-20250219184544-5e2f53b7dc91/go.mod h1:tg/lgvi4aaHTF0zKwhDDtZrNEfvC/c/bjxMNVxFhlMk=
+github.com/0xsoniclabs/substate v0.0.0-20250226110130-2d8888bf47c6 h1:RgR0N/k551RasBJQ7+KQ2rSBia62USuxpu9L4hthCT4=
+github.com/0xsoniclabs/substate v0.0.0-20250226110130-2d8888bf47c6/go.mod h1:/rnLZqsYBGJoDavLVRFWldhd01AlPZ8FzFiaAkAx0JE=
 github.com/0xsoniclabs/tosca v0.0.0-20250109073452-a7eb49bdbd45 h1:4PD4GwrMVkEdBCDRdinviL4AvD4mYSsbeX1uAJ70NY0=
 github.com/0xsoniclabs/tosca v0.0.0-20250109073452-a7eb49bdbd45/go.mod h1:ZjONKDZS84n/Ne0Rlt56X4O3Xz3r4jRUB440p7UrPZ0=
 github.com/DataDog/zstd v1.5.6 h1:LbEglqepa/ipmmQJUDnSsfvA8e8IStVcGaFWDuxvGOY=
@@ -289,8 +289,8 @@ github.com/yusufpapurcu/wmi v1.2.4 h1:zFUKzehAFReQwLys1b/iSMl+JQGSCSjtVqQn9bBrPo
 github.com/yusufpapurcu/wmi v1.2.4/go.mod h1:SBZ9tNy3G9/m5Oi98Zks0QjeHVDvuK0qfxQmPyzfmi0=
 go.uber.org/atomic v1.11.0 h1:ZvwS0R+56ePWxUNi+Atn9dWONBPp/AUETXlHW0DxSjE=
 go.uber.org/atomic v1.11.0/go.mod h1:LUxbIzbOniOlMKjJjyPfpl4v+PKK2cNJn91OQbhoJI0=
-go.uber.org/mock v0.4.0 h1:VcM4ZOtdbR4f6VXfiOpwpVJDL6lCReaZ6mw31wqh7KU=
-go.uber.org/mock v0.4.0/go.mod h1:a6FSlNadKUHUa9IP5Vyt1zh4fC7uAwxMutEAscFbkZc=
+go.uber.org/mock v0.5.0 h1:KAMbZvZPyBPWgD14IrIQ38QCyjwpvVVV6K/bHl1IwQU=
+go.uber.org/mock v0.5.0/go.mod h1:ge71pBPLYDk7QIi1LupWxdAykm7KIEFchiOqd6z7qMM=
 golang.org/x/crypto v0.0.0-20190308221718-c2843e01d9a2/go.mod h1:djNgcEr1/C05ACkg1iLfiJU5Ep61QUkGW8qpdssI0+w=
 golang.org/x/crypto v0.0.0-20191011191535-87dc89f01550/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
 golang.org/x/crypto v0.0.0-20200622213623-75b288015ac9/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
