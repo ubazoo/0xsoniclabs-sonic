@@ -1,6 +1,7 @@
 package cert
 
 import (
+	"encoding/json"
 	"math/rand/v2"
 	"testing"
 
@@ -97,4 +98,17 @@ func TestBitSet_InvalidUnmarshalJSON(t *testing.T) {
 	var b BitSet[uint8]
 	err := b.UnmarshalJSON([]byte(`"g"`))
 	require.Error(err)
+}
+
+func TestBitSet_EmptySet_CanBeMarshalledAndUnmarshalled(t *testing.T) {
+	require := require.New(t)
+
+	var b BitSet[uint8]
+	data, err := json.Marshal(b)
+	require.NoError(err)
+
+	var b2 BitSet[uint8]
+	err = json.Unmarshal(data, &b2)
+	require.NoError(err)
+	require.Equal([]uint8{}, b2.Entries())
 }
