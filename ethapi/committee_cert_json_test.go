@@ -2,6 +2,7 @@ package ethapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -95,4 +96,63 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 	}
 	got := toJsonCommitteeCertificate(c)
 	require.Equal(want, got)
+}
+
+func TestCommitteeCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
+	require := require.New(t)
+
+	// empty case setup
+	bitSet := cert.BitSet[scc.MemberId]{}
+	sig := bls.Signature{}
+	agg := cert.NewAggregatedSignature[cert.CommitteeStatement](
+		bitSet,
+		sig,
+	)
+
+	// non-empty case setup
+	key1 := bls.NewPrivateKey()
+	members := []scc.Member{
+		{
+			PublicKey:         key1.PublicKey(),
+			ProofOfPossession: key1.GetProofOfPossession(),
+			VotingPower:       1,
+		},
+	}
+	bitset2 := cert.BitSet[scc.MemberId]{}
+	sig2 := cert.Signature[cert.CommitteeStatement]{Signature: key1.Sign([]byte{1})}
+	agg2 := cert.NewAggregatedSignature[cert.CommitteeStatement](
+		bitset2,
+		sig,
+	)
+	agg2.Add(1, sig2)
+
+	tests := map[string]struct {
+		cert cert.Certificate[cert.CommitteeStatement]
+		want string
+	}{
+		"empty cert": {
+			cert: cert.NewCertificateWithSignature(
+				cert.NewCommitteeStatement(0, 0, scc.NewCommittee()),
+				agg,
+			),
+			want: fmt.Sprintf(`{"chainId":0,"period":0,"members":null,"signers":null,"signature":"%v"}`, sig),
+		},
+		"non-empty cert": {
+			cert: cert.NewCertificateWithSignature(
+				cert.NewCommitteeStatement(123, 456, scc.NewCommittee(members...)),
+				agg2,
+			),
+			want: fmt.Sprintf(`{"chainId":123,"period":456,"members":[{"PublicKey":"%v","ProofOfPossession":"%v","VotingPower":%v}],"signers":"0x02","signature":"%v"}`,
+				members[0].PublicKey, members[0].ProofOfPossession, members[0].VotingPower, sig2.Signature),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			got := toJsonCommitteeCertificate(test.cert)
+			data, err := json.Marshal(got)
+			require.NoError(err)
+			require.Equal(test.want, string(data))
+		})
+	}
 }
