@@ -49,6 +49,9 @@ func (h Bytes) String() string {
 	if h == nil {
 		return `null`
 	}
+	if len(h) == 0 {
+		return `""`
+	}
 	return fmt.Sprintf(`"0x%x"`, []byte(h))
 }
 
