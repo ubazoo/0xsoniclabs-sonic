@@ -2,6 +2,7 @@ package ethapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -89,4 +90,53 @@ func TestBlockCertificateToJson(t *testing.T) {
 	require.Equal(common.Hash{0x2}, json.StateRoot)
 	require.Equal(bitset, json.Signers)
 	require.Equal(sig, json.Signature)
+}
+
+func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
+	require := require.New(t)
+	key := bls.NewPrivateKey()
+
+	// empty case setup
+	sig := key.GetProofOfPossession()
+
+	// non-empty case setup
+	bitset := cert.BitSet[scc.MemberId]{}
+	agg := cert.NewAggregatedSignature[cert.BlockStatement](
+		bitset,
+		sig,
+	)
+	err := agg.Add(1, cert.Signature[cert.BlockStatement]{Signature: key.Sign([]byte{1})})
+	require.NoError(err)
+
+	tests := map[string]struct {
+		cert cert.BlockCertificate
+		want string
+	}{
+		"empty": {
+			cert: cert.NewCertificateWithSignature(
+				cert.NewBlockStatement(0, 0, common.Hash{}, common.Hash{}),
+				cert.NewAggregatedSignature[cert.BlockStatement](
+					cert.BitSet[scc.MemberId]{}, sig),
+			),
+			want: fmt.Sprintf(`{"chainId":0,"number":0,"hash":"%v","stateRoot":"%v","signers":null,"signature":"%v"}`,
+				common.Hash{}, common.Hash{}, sig),
+		},
+		"non-empty": {
+			cert: cert.NewCertificateWithSignature(
+				cert.NewBlockStatement(123, 456, common.Hash{0x1}, common.Hash{0x2}),
+				agg,
+			),
+			want: fmt.Sprintf(`{"chainId":123,"number":456,"hash":"%v","stateRoot":"%v","signers":"0x02","signature":"%v"}`,
+				common.Hash{0x1}, common.Hash{0x2}, agg.Signature()),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			jsonCert := toJsonBlockCertificate(test.cert)
+			data, err := json.Marshal(jsonCert)
+			require.NoError(err)
+			require.Equal(test.want, string(data))
+		})
+	}
 }

@@ -100,50 +100,49 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 
 func TestCommitteeCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 	require := require.New(t)
+	key := bls.NewPrivateKey()
 
 	// empty case setup
-	bitSet := cert.BitSet[scc.MemberId]{}
-	sig := bls.Signature{}
-	agg := cert.NewAggregatedSignature[cert.CommitteeStatement](
-		bitSet,
-		sig,
-	)
+	sig := key.GetProofOfPossession()
+	// --
 
 	// non-empty case setup
-	key1 := bls.NewPrivateKey()
 	members := []scc.Member{
 		{
-			PublicKey:         key1.PublicKey(),
-			ProofOfPossession: key1.GetProofOfPossession(),
+			PublicKey:         key.PublicKey(),
+			ProofOfPossession: key.GetProofOfPossession(),
 			VotingPower:       1,
 		},
 	}
-	bitset2 := cert.BitSet[scc.MemberId]{}
-	sig2 := cert.Signature[cert.CommitteeStatement]{Signature: key1.Sign([]byte{1})}
-	agg2 := cert.NewAggregatedSignature[cert.CommitteeStatement](
-		bitset2,
+	bitset := cert.BitSet[scc.MemberId]{}
+	agg := cert.NewAggregatedSignature[cert.CommitteeStatement](
+		bitset,
 		sig,
 	)
-	agg2.Add(1, sig2)
+	err := agg.Add(1, cert.Signature[cert.CommitteeStatement]{Signature: key.Sign([]byte{1})})
+	require.NoError(err)
+	// --
 
 	tests := map[string]struct {
-		cert cert.Certificate[cert.CommitteeStatement]
+		cert cert.CommitteeCertificate
 		want string
 	}{
 		"empty cert": {
 			cert: cert.NewCertificateWithSignature(
 				cert.NewCommitteeStatement(0, 0, scc.NewCommittee()),
-				agg,
+				cert.NewAggregatedSignature[cert.CommitteeStatement](
+					cert.BitSet[scc.MemberId]{}, sig),
 			),
-			want: fmt.Sprintf(`{"chainId":0,"period":0,"members":null,"signers":null,"signature":"%v"}`, sig),
+			want: fmt.Sprintf(`{"chainId":0,"period":0,"members":null,"signers":null,"signature":"%v"}`,
+				sig),
 		},
 		"non-empty cert": {
 			cert: cert.NewCertificateWithSignature(
 				cert.NewCommitteeStatement(123, 456, scc.NewCommittee(members...)),
-				agg2,
+				agg,
 			),
 			want: fmt.Sprintf(`{"chainId":123,"period":456,"members":[{"PublicKey":"%v","ProofOfPossession":"%v","VotingPower":%v}],"signers":"0x02","signature":"%v"}`,
-				members[0].PublicKey, members[0].ProofOfPossession, members[0].VotingPower, sig2.Signature),
+				members[0].PublicKey, members[0].ProofOfPossession, members[0].VotingPower, agg.Signature()),
 		},
 	}
 
