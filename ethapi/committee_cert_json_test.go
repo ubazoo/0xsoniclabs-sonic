@@ -107,7 +107,7 @@ func TestCommitteeCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 	signatureRegex := `"0x[0-9a-f]{192}"`
 	memberRegex := fmt.Sprintf(`\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]`,
 		keyRegex, signatureRegex)
-	signersRegex := `"(0x[0-9a-f]+)|null"`
+	signersRegex := `"(0x[0-9a-f]+)"|null`
 	certRegexString := fmt.Sprintf(`{"chainId":\d+,"period":\d+,"members":%v,"signers":%v,"signature":%v}`,
 		memberRegex, signersRegex, signatureRegex)
 	certRegex := regexp.MustCompile(certRegexString)
@@ -143,7 +143,7 @@ func TestCommitteeCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 				cert.NewAggregatedSignature[cert.CommitteeStatement](
 					cert.BitSet[scc.MemberId]{}, sig),
 			),
-			want: fmt.Sprintf(`{"chainId":0,"period":0,"members":null,"signers":"null","signature":"%v"}`,
+			want: fmt.Sprintf(`{"chainId":0,"period":0,"members":null,"signers":null,"signature":"%v"}`,
 				sig),
 		},
 		"non-empty cert": {

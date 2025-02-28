@@ -98,7 +98,7 @@ func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 	key := bls.NewPrivateKey()
 
 	hashRegex := `"0x[0-9a-f]{64}"`
-	signersRegex := `"(0x[0-9a-f]+)|null"`
+	signersRegex := `"(0x[0-9a-f]+)"|null`
 	signatureRegex := `"0x[0-9a-f]{192}"`
 	certRegexString := fmt.Sprintf(`^{"chainId":\d+,"number":\d+,"hash":%v,"stateRoot":%v,"signers":%v,"signature":%v}$`,
 		hashRegex, hashRegex, signersRegex, signatureRegex)
@@ -126,7 +126,7 @@ func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 				cert.NewAggregatedSignature[cert.BlockStatement](
 					cert.BitSet[scc.MemberId]{}, sig),
 			),
-			want: fmt.Sprintf(`{"chainId":0,"number":0,"hash":"%v","stateRoot":"%v","signers":"null","signature":"%v"}`,
+			want: fmt.Sprintf(`{"chainId":0,"number":0,"hash":"%v","stateRoot":"%v","signers":null,"signature":"%v"}`,
 				common.Hash{}, common.Hash{}, sig),
 		},
 		"non-empty": {
