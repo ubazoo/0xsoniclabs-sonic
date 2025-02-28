@@ -3,6 +3,7 @@ package ethapi
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -96,6 +97,13 @@ func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 	require := require.New(t)
 	key := bls.NewPrivateKey()
 
+	hashRegex := `"0x[0-9a-f]{64}"`
+	signersRegex := `"(0x[0-9a-f]+)|null"`
+	signatureRegex := `"0x[0-9a-f]{192}"`
+	certRegexString := fmt.Sprintf(`^{"chainId":\d+,"number":\d+,"hash":%v,"stateRoot":%v,"signers":%v,"signature":%v}$`,
+		hashRegex, hashRegex, signersRegex, signatureRegex)
+	certRegex := regexp.MustCompile(certRegexString)
+
 	// empty case setup
 	sig := key.GetProofOfPossession()
 
@@ -118,7 +126,7 @@ func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 				cert.NewAggregatedSignature[cert.BlockStatement](
 					cert.BitSet[scc.MemberId]{}, sig),
 			),
-			want: fmt.Sprintf(`{"chainId":0,"number":0,"hash":"%v","stateRoot":"%v","signers":null,"signature":"%v"}`,
+			want: fmt.Sprintf(`{"chainId":0,"number":0,"hash":"%v","stateRoot":"%v","signers":"null","signature":"%v"}`,
 				common.Hash{}, common.Hash{}, sig),
 		},
 		"non-empty": {
@@ -137,6 +145,7 @@ func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 			data, err := json.Marshal(jsonCert)
 			require.NoError(err)
 			require.Equal(test.want, string(data))
+			require.Regexp(certRegex, string(data))
 		})
 	}
 }
