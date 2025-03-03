@@ -107,7 +107,7 @@ type committeeCertValues struct {
 	signature bls.Signature
 }
 
-func checkCommitteeCertFormat(t *testing.T, cert cert.CommitteeCertificate, want committeeCertValues) {
+func checkCommitteeCertRegexFormat(t *testing.T, cert cert.CommitteeCertificate, want committeeCertValues) {
 	keyRegexString := `("0x[0-9a-f]{96}")`
 	signatureRegexString := `("0x[0-9a-f]{192}")`
 	memberRegexString := fmt.Sprintf(`(\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]|null)`,
@@ -138,12 +138,25 @@ func checkCommitteeCertFormat(t *testing.T, cert cert.CommitteeCertificate, want
 			require := require.New(t)
 			data, err := json.Marshal(toJsonCommitteeCertificate(cert))
 			require.NoError(err)
-			require.True(test.regex.Match(data))
+			require.True(test.regex.MatchString(string(data)))
 		})
 	}
 }
 
-func TestCommitteeCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
+func checkCommitteeCertFormat(t *testing.T, cert cert.CommitteeCertificate, want committeeCertValues) {
+	signers, err := json.Marshal(want.signers)
+	require.NoError(t, err)
+	members, err := json.Marshal(want.members)
+	require.NoError(t, err)
+	wantCert := fmt.Sprintf(`{"chainId":%d,"period":%d,"members":%v,"signers":%v,"signature":"%v"}`,
+		want.chainID, want.period, string(members), string(signers), want.signature)
+
+	data, err := json.Marshal(toJsonCommitteeCertificate(cert))
+	require.NoError(t, err)
+	require.Equal(t, wantCert, string(data))
+}
+
+func TestCommitteeCertificate_MarshalingProducesExpectedJsonFormatting(t *testing.T) {
 	require := require.New(t)
 	key := bls.NewPrivateKey()
 
@@ -203,6 +216,9 @@ func TestCommitteeCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
+			// check regex format
+			checkCommitteeCertRegexFormat(t, test.cert, test.want)
+			// check exact values are as expected
 			checkCommitteeCertFormat(t, test.cert, test.want)
 		})
 	}
