@@ -93,7 +93,7 @@ func TestBlockCertificateToJson(t *testing.T) {
 	require.Equal(sig, json.Signature)
 }
 
-func checkBlockCertRegexFormat(t *testing.T, cert cert.BlockCertificate) {
+func validateBlockCertJsonFormat(t *testing.T, cert cert.BlockCertificate) {
 
 	hashRegex := `"0x[0-9a-f]{64}"`
 	signersRegex := `("0x[0-9a-f]+"|null)`
@@ -128,7 +128,7 @@ func checkBlockCertRegexFormat(t *testing.T, cert cert.BlockCertificate) {
 	}
 }
 
-func checkBlockCertFormat(t *testing.T, cert cert.BlockCertificate, want blockCertificateJson) {
+func verifyBlockCertJsonValues(t *testing.T, cert cert.BlockCertificate, want blockCertificateJson) {
 	signers, err := want.Signers.MarshalJSON()
 	require.NoError(t, err)
 	wantCert := fmt.Sprintf(`{"chainId":%d,"number":%d,"hash":"%v","stateRoot":"%v","signers":%v,"signature":"%v"}`,
@@ -191,8 +191,8 @@ func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			checkBlockCertRegexFormat(t, test.cert)
-			checkBlockCertFormat(t, test.cert, test.want)
+			validateBlockCertJsonFormat(t, test.cert)
+			verifyBlockCertJsonValues(t, test.cert, test.want)
 		})
 	}
 }

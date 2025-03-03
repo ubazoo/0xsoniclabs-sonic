@@ -99,7 +99,7 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 	require.Equal(want, got)
 }
 
-func checkCommitteeCertRegexFormat(t *testing.T, cert cert.CommitteeCertificate) {
+func validateCommitteeCertJsonFormat(t *testing.T, cert cert.CommitteeCertificate) {
 	keyRegexString := `("0x[0-9a-f]{96}")`
 	signatureRegexString := `("0x[0-9a-f]{192}")`
 	memberRegexString := fmt.Sprintf(`(\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]|null)`,
@@ -135,7 +135,7 @@ func checkCommitteeCertRegexFormat(t *testing.T, cert cert.CommitteeCertificate)
 	}
 }
 
-func checkCommitteeCertFormat(t *testing.T, cert cert.CommitteeCertificate, want committeeCertificateJson) {
+func verifyCommitteeCertJsonValues(t *testing.T, cert cert.CommitteeCertificate, want committeeCertificateJson) {
 	signers, err := json.Marshal(want.Signers)
 	require.NoError(t, err)
 	members, err := json.Marshal(want.Members)
@@ -209,9 +209,9 @@ func TestCommitteeCertificate_MarshalingProducesExpectedJsonFormatting(t *testin
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			// check regex format
-			checkCommitteeCertRegexFormat(t, test.cert)
+			validateCommitteeCertJsonFormat(t, test.cert)
 			// check exact values are as expected
-			checkCommitteeCertFormat(t, test.cert, test.want)
+			verifyCommitteeCertJsonValues(t, test.cert, test.want)
 		})
 	}
 }
