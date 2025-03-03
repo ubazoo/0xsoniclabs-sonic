@@ -50,7 +50,7 @@ func (h Bytes) String() string {
 		return `null`
 	}
 	if len(h) == 0 {
-		return `""`
+		return `"0x"`
 	}
 	return fmt.Sprintf(`"0x%x"`, []byte(h))
 }
