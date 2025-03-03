@@ -93,15 +93,6 @@ func TestBlockCertificateToJson(t *testing.T) {
 	require.Equal(sig, json.Signature)
 }
 
-type blockCertValues struct {
-	chainId   uint64
-	number    uint64
-	hash      common.Hash
-	stateRoot common.Hash
-	signers   cert.BitSet[scc.MemberId]
-	signature bls.Signature
-}
-
 func checkBlockCertRegexFormat(t *testing.T, cert cert.BlockCertificate) {
 
 	hashRegex := `"0x[0-9a-f]{64}"`
@@ -137,12 +128,11 @@ func checkBlockCertRegexFormat(t *testing.T, cert cert.BlockCertificate) {
 	}
 }
 
-func checkBlockCertFormat(t *testing.T, cert cert.BlockCertificate, want blockCertValues) {
-	// want values
-	signers, err := want.signers.MarshalJSON()
+func checkBlockCertFormat(t *testing.T, cert cert.BlockCertificate, want blockCertificateJson) {
+	signers, err := want.Signers.MarshalJSON()
 	require.NoError(t, err)
 	wantCert := fmt.Sprintf(`{"chainId":%d,"number":%d,"hash":"%v","stateRoot":"%v","signers":%v,"signature":"%v"}`,
-		want.chainId, want.number, want.hash, want.stateRoot, string(signers), want.signature)
+		want.ChainId, want.Number, want.Hash, want.StateRoot, string(signers), want.Signature)
 	data, err := json.Marshal(toJsonBlockCertificate(cert))
 	require.NoError(t, err)
 	require.Equal(t, wantCert, string(data))
@@ -166,7 +156,7 @@ func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 
 	tests := map[string]struct {
 		cert cert.BlockCertificate
-		want blockCertValues
+		want blockCertificateJson
 	}{
 		"empty": {
 			cert: cert.NewCertificateWithSignature(
@@ -174,13 +164,13 @@ func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 				cert.NewAggregatedSignature[cert.BlockStatement](
 					cert.BitSet[scc.MemberId]{}, sig),
 			),
-			want: blockCertValues{
-				chainId:   0,
-				number:    0,
-				hash:      common.Hash{},
-				stateRoot: common.Hash{},
-				signers:   cert.BitSet[scc.MemberId]{},
-				signature: sig,
+			want: blockCertificateJson{
+				ChainId:   0,
+				Number:    0,
+				Hash:      common.Hash{},
+				StateRoot: common.Hash{},
+				Signers:   cert.BitSet[scc.MemberId]{},
+				Signature: sig,
 			},
 		},
 		"non-empty": {
@@ -188,13 +178,13 @@ func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 				cert.NewBlockStatement(123, 456, common.Hash{0x1}, common.Hash{0x2}),
 				agg,
 			),
-			want: blockCertValues{
-				chainId:   123,
-				number:    456,
-				hash:      common.Hash{0x1},
-				stateRoot: common.Hash{0x2},
-				signers:   agg.Signers(),
-				signature: agg.Signature(),
+			want: blockCertificateJson{
+				ChainId:   123,
+				Number:    456,
+				Hash:      common.Hash{0x1},
+				StateRoot: common.Hash{0x2},
+				Signers:   agg.Signers(),
+				Signature: agg.Signature(),
 			},
 		},
 	}

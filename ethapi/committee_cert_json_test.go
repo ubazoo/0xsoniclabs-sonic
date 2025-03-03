@@ -99,15 +99,7 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 	require.Equal(want, got)
 }
 
-type committeeCertValues struct {
-	chainID   uint64
-	period    uint64
-	members   []scc.Member
-	signers   cert.BitSet[scc.MemberId]
-	signature bls.Signature
-}
-
-func checkCommitteeCertRegexFormat(t *testing.T, cert cert.CommitteeCertificate, want committeeCertValues) {
+func checkCommitteeCertRegexFormat(t *testing.T, cert cert.CommitteeCertificate) {
 	keyRegexString := `("0x[0-9a-f]{96}")`
 	signatureRegexString := `("0x[0-9a-f]{192}")`
 	memberRegexString := fmt.Sprintf(`(\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]|null)`,
@@ -143,13 +135,13 @@ func checkCommitteeCertRegexFormat(t *testing.T, cert cert.CommitteeCertificate,
 	}
 }
 
-func checkCommitteeCertFormat(t *testing.T, cert cert.CommitteeCertificate, want committeeCertValues) {
-	signers, err := json.Marshal(want.signers)
+func checkCommitteeCertFormat(t *testing.T, cert cert.CommitteeCertificate, want committeeCertificateJson) {
+	signers, err := json.Marshal(want.Signers)
 	require.NoError(t, err)
-	members, err := json.Marshal(want.members)
+	members, err := json.Marshal(want.Members)
 	require.NoError(t, err)
 	wantCert := fmt.Sprintf(`{"chainId":%d,"period":%d,"members":%v,"signers":%v,"signature":"%v"}`,
-		want.chainID, want.period, string(members), string(signers), want.signature)
+		want.ChainId, want.Period, string(members), string(signers), want.Signature)
 
 	data, err := json.Marshal(toJsonCommitteeCertificate(cert))
 	require.NoError(t, err)
@@ -183,7 +175,7 @@ func TestCommitteeCertificate_MarshalingProducesExpectedJsonFormatting(t *testin
 
 	tests := map[string]struct {
 		cert cert.CommitteeCertificate
-		want committeeCertValues
+		want committeeCertificateJson
 	}{
 		"empty cert": {
 			cert: cert.NewCertificateWithSignature(
@@ -191,12 +183,12 @@ func TestCommitteeCertificate_MarshalingProducesExpectedJsonFormatting(t *testin
 				cert.NewAggregatedSignature[cert.CommitteeStatement](
 					cert.BitSet[scc.MemberId]{}, sig),
 			),
-			want: committeeCertValues{
-				chainID:   0,
-				period:    0,
-				members:   nil,
-				signers:   cert.BitSet[scc.MemberId]{},
-				signature: sig,
+			want: committeeCertificateJson{
+				ChainId:   0,
+				Period:    0,
+				Members:   nil,
+				Signers:   cert.BitSet[scc.MemberId]{},
+				Signature: sig,
 			},
 		},
 		"non-empty cert": {
@@ -204,12 +196,12 @@ func TestCommitteeCertificate_MarshalingProducesExpectedJsonFormatting(t *testin
 				cert.NewCommitteeStatement(123, 456, scc.NewCommittee(members...)),
 				agg,
 			),
-			want: committeeCertValues{
-				chainID:   123,
-				period:    456,
-				members:   members,
-				signers:   agg.Signers(),
-				signature: agg.Signature(),
+			want: committeeCertificateJson{
+				ChainId:   123,
+				Period:    456,
+				Members:   members,
+				Signers:   agg.Signers(),
+				Signature: agg.Signature(),
 			},
 		},
 	}
@@ -217,7 +209,7 @@ func TestCommitteeCertificate_MarshalingProducesExpectedJsonFormatting(t *testin
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			// check regex format
-			checkCommitteeCertRegexFormat(t, test.cert, test.want)
+			checkCommitteeCertRegexFormat(t, test.cert)
 			// check exact values are as expected
 			checkCommitteeCertFormat(t, test.cert, test.want)
 		})
