@@ -93,16 +93,53 @@ func TestBlockCertificateToJson(t *testing.T) {
 	require.Equal(sig, json.Signature)
 }
 
-func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
-	require := require.New(t)
-	key := bls.NewPrivateKey()
+type blockCertValues struct {
+	chainId   uint64
+	number    uint64
+	hash      common.Hash
+	stateRoot common.Hash
+	signers   cert.BitSet[scc.MemberId]
+	signature bls.Signature
+}
+
+func checkBlockCertFormat(t *testing.T, cert cert.BlockCertificate, want blockCertValues) {
 
 	hashRegex := `"0x[0-9a-f]{64}"`
-	signersRegex := `"(0x[0-9a-f]+)"|null`
+	signersRegex := `("0x[0-9a-f]+"|null)`
 	signatureRegex := `"0x[0-9a-f]{192}"`
 	certRegexString := fmt.Sprintf(`^{"chainId":\d+,"number":\d+,"hash":%v,"stateRoot":%v,"signers":%v,"signature":%v}$`,
 		hashRegex, hashRegex, signersRegex, signatureRegex)
-	certRegex := regexp.MustCompile(certRegexString)
+
+	tests := map[string]struct {
+		regex *regexp.Regexp
+	}{
+		"hash": {
+			regex: regexp.MustCompile(hashRegex),
+		},
+		"signers": {
+			regex: regexp.MustCompile(signersRegex),
+		},
+		"signature": {
+			regex: regexp.MustCompile(signatureRegex),
+		},
+		"certRegex": {
+			regex: regexp.MustCompile(certRegexString),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			data, err := json.Marshal(toJsonBlockCertificate(cert))
+			require.NoError(err)
+			require.True(test.regex.Match(data))
+		})
+	}
+}
+
+func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
+	require := require.New(t)
+	key := bls.NewPrivateKey()
 
 	// empty case setup
 	sig := key.GetProofOfPossession()
@@ -118,7 +155,7 @@ func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 
 	tests := map[string]struct {
 		cert cert.BlockCertificate
-		want string
+		want blockCertValues
 	}{
 		"empty": {
 			cert: cert.NewCertificateWithSignature(
@@ -126,26 +163,34 @@ func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 				cert.NewAggregatedSignature[cert.BlockStatement](
 					cert.BitSet[scc.MemberId]{}, sig),
 			),
-			want: fmt.Sprintf(`{"chainId":0,"number":0,"hash":"%v","stateRoot":"%v","signers":null,"signature":"%v"}`,
-				common.Hash{}, common.Hash{}, sig),
+			want: blockCertValues{
+				chainId:   0,
+				number:    0,
+				hash:      common.Hash{},
+				stateRoot: common.Hash{},
+				signers:   cert.BitSet[scc.MemberId]{},
+				signature: sig,
+			},
 		},
 		"non-empty": {
 			cert: cert.NewCertificateWithSignature(
 				cert.NewBlockStatement(123, 456, common.Hash{0x1}, common.Hash{0x2}),
 				agg,
 			),
-			want: fmt.Sprintf(`{"chainId":123,"number":456,"hash":"%v","stateRoot":"%v","signers":"0x02","signature":"%v"}`,
-				common.Hash{0x1}, common.Hash{0x2}, agg.Signature()),
+			want: blockCertValues{
+				chainId:   123,
+				number:    456,
+				hash:      common.Hash{0x1},
+				stateRoot: common.Hash{0x2},
+				signers:   agg.Signers(),
+				signature: agg.Signature(),
+			},
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			jsonCert := toJsonBlockCertificate(test.cert)
-			data, err := json.Marshal(jsonCert)
-			require.NoError(err)
-			require.Equal(test.want, string(data))
-			require.Regexp(certRegex, string(data))
+			checkBlockCertFormat(t, test.cert, test.want)
 		})
 	}
 }

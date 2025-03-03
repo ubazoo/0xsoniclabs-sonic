@@ -99,7 +99,7 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 	require.Equal(want, got)
 }
 
-type certValues struct {
+type committeeCertValues struct {
 	chainID   uint64
 	period    uint64
 	members   []scc.Member
@@ -107,7 +107,7 @@ type certValues struct {
 	signature bls.Signature
 }
 
-func checkFormat(t *testing.T, cert cert.CommitteeCertificate, want certValues) {
+func checkCommitteeCertFormat(t *testing.T, cert cert.CommitteeCertificate, want committeeCertValues) {
 	keyRegexString := `("0x[0-9a-f]{96}")`
 	signatureRegexString := `("0x[0-9a-f]{192}")`
 	memberRegexString := fmt.Sprintf(`(\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]|null)`,
@@ -170,7 +170,7 @@ func TestCommitteeCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 
 	tests := map[string]struct {
 		cert cert.CommitteeCertificate
-		want certValues
+		want committeeCertValues
 	}{
 		"empty cert": {
 			cert: cert.NewCertificateWithSignature(
@@ -178,20 +178,32 @@ func TestCommitteeCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 				cert.NewAggregatedSignature[cert.CommitteeStatement](
 					cert.BitSet[scc.MemberId]{}, sig),
 			),
-			want: certValues{chainID: 0, period: 0, members: nil, signers: cert.BitSet[scc.MemberId]{}, signature: sig},
+			want: committeeCertValues{
+				chainID:   0,
+				period:    0,
+				members:   nil,
+				signers:   cert.BitSet[scc.MemberId]{},
+				signature: sig,
+			},
 		},
 		"non-empty cert": {
 			cert: cert.NewCertificateWithSignature(
 				cert.NewCommitteeStatement(123, 456, scc.NewCommittee(members...)),
 				agg,
 			),
-			want: certValues{chainID: 123, period: 456, members: members, signers: agg.Signers(), signature: agg.Signature()},
+			want: committeeCertValues{
+				chainID:   123,
+				period:    456,
+				members:   members,
+				signers:   agg.Signers(),
+				signature: agg.Signature(),
+			},
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			checkFormat(t, test.cert, test.want)
+			checkCommitteeCertFormat(t, test.cert, test.want)
 		})
 	}
 }
