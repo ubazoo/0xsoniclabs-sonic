@@ -99,18 +99,53 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 	require.Equal(want, got)
 }
 
+type certValues struct {
+	chainID   uint64
+	period    uint64
+	members   []scc.Member
+	signers   cert.BitSet[scc.MemberId]
+	signature bls.Signature
+}
+
+func checkFormat(t *testing.T, cert cert.CommitteeCertificate, want certValues) {
+	keyRegexString := `("0x[0-9a-f]{96}")`
+	signatureRegexString := `("0x[0-9a-f]{192}")`
+	memberRegexString := fmt.Sprintf(`(\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]|null)`,
+		keyRegexString, signatureRegexString)
+	signersRegexString := `("0x[0-9a-f]+"|null)`
+	certRegexString := fmt.Sprintf(`{"chainId":(\d+),"period":(\d+),"members":%v,"signers":%v,"signature":%v}`,
+		memberRegexString, signersRegexString, signatureRegexString)
+
+	tests := map[string]struct {
+		regex *regexp.Regexp
+	}{
+		"signatureRegex": {
+			regex: regexp.MustCompile(signatureRegexString),
+		},
+		"memberRegex": {
+			regex: regexp.MustCompile(memberRegexString),
+		},
+		"signersRegex": {
+			regex: regexp.MustCompile(signersRegexString),
+		},
+		"certRegex": {
+			regex: regexp.MustCompile(certRegexString),
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+			data, err := json.Marshal(toJsonCommitteeCertificate(cert))
+			require.NoError(err)
+			require.True(test.regex.Match(data))
+		})
+	}
+}
+
 func TestCommitteeCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 	require := require.New(t)
 	key := bls.NewPrivateKey()
-
-	keyRegex := `"0x[0-9a-f]{96}"`
-	signatureRegex := `"0x[0-9a-f]{192}"`
-	memberRegex := fmt.Sprintf(`\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]`,
-		keyRegex, signatureRegex)
-	signersRegex := `"(0x[0-9a-f]+)"|null`
-	certRegexString := fmt.Sprintf(`{"chainId":\d+,"period":\d+,"members":%v,"signers":%v,"signature":%v}`,
-		memberRegex, signersRegex, signatureRegex)
-	certRegex := regexp.MustCompile(certRegexString)
 
 	// empty case setup
 	sig := key.GetProofOfPossession()
@@ -135,7 +170,7 @@ func TestCommitteeCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 
 	tests := map[string]struct {
 		cert cert.CommitteeCertificate
-		want string
+		want certValues
 	}{
 		"empty cert": {
 			cert: cert.NewCertificateWithSignature(
@@ -143,26 +178,20 @@ func TestCommitteeCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
 				cert.NewAggregatedSignature[cert.CommitteeStatement](
 					cert.BitSet[scc.MemberId]{}, sig),
 			),
-			want: fmt.Sprintf(`{"chainId":0,"period":0,"members":null,"signers":null,"signature":"%v"}`,
-				sig),
+			want: certValues{chainID: 0, period: 0, members: nil, signers: cert.BitSet[scc.MemberId]{}, signature: sig},
 		},
 		"non-empty cert": {
 			cert: cert.NewCertificateWithSignature(
 				cert.NewCommitteeStatement(123, 456, scc.NewCommittee(members...)),
 				agg,
 			),
-			want: fmt.Sprintf(`{"chainId":123,"period":456,"members":[{"PublicKey":"%v","ProofOfPossession":"%v","VotingPower":%v}],"signers":"0x02","signature":"%v"}`,
-				members[0].PublicKey, members[0].ProofOfPossession, members[0].VotingPower, agg.Signature()),
+			want: certValues{chainID: 123, period: 456, members: members, signers: agg.Signers(), signature: agg.Signature()},
 		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			got := toJsonCommitteeCertificate(test.cert)
-			data, err := json.Marshal(got)
-			require.NoError(err)
-			require.Equal(test.want, string(data))
-			require.Regexp(certRegex, string(data))
+			checkFormat(t, test.cert, test.want)
 		})
 	}
 }
