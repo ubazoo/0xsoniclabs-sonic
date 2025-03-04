@@ -138,7 +138,7 @@ func validateBlockCertJsonFormat(t *testing.T, cert cert.BlockCertificate) {
 	}
 }
 
-func TestBlockCertificate_ContainsExpectedValues_EmptyCert(t *testing.T) {
+func TestBlockCertificate_ContainsExpectedValues_EmptyCertificate(t *testing.T) {
 	require := require.New(t)
 	emptyCert := makeEmptyBlockCert()
 	data, err := json.Marshal(toJsonBlockCertificate(emptyCert))
@@ -151,7 +151,7 @@ func TestBlockCertificate_ContainsExpectedValues_EmptyCert(t *testing.T) {
 	require.Contains(string(data), `"signature":"0x`)
 }
 
-func TestBlockCertificate_ContainsExpectedValues_NonEmptyCert(t *testing.T) {
+func TestBlockCertificate_ContainsExpectedValues_NonEmptyCertificate(t *testing.T) {
 	require := require.New(t)
 	testCert := makeTestBlockCert(t)
 	agg := testCert.Signature()
