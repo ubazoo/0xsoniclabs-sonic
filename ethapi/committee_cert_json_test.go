@@ -113,25 +113,19 @@ func TestCommitteeCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
 }
 
 func validateCommitteeCertJsonFormat(t *testing.T, cert cert.CommitteeCertificate) {
-	chainId := `"chainId":\d+`
-	period := `"period":\d+`
-
 	keyRegex := `("0x[0-9a-f]{96}")`
 	signatureRegex := `("0x[0-9a-f]{192}")`
 	member := fmt.Sprintf(`(\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]|null)`,
 		keyRegex, signatureRegex)
 
-	signers := `"signers":("0x[0-9a-f]+"|null)`
-	signature := `"signature":` + signatureRegex
-
 	tests := map[string]struct {
 		regex string
 	}{
-		"chainId":   {regex: chainId},
-		"period":    {regex: period},
+		"chainId":   {regex: `"chainId":\d+`},
+		"period":    {regex: `"period":\d+`},
 		"member":    {regex: member},
-		"signers":   {regex: signers},
-		"signature": {regex: signature},
+		"signers":   {regex: `"signers":("0x[0-9a-f]+"|null)`},
+		"signature": {regex: `"signature":` + signatureRegex},
 	}
 
 	for name, test := range tests {

@@ -109,23 +109,16 @@ func TestBlockCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
 }
 
 func validateBlockCertJsonFormat(t *testing.T, cert cert.BlockCertificate) {
-	chainId := `"chainId":\d+`
-	number := `"number":\d+`
 	hashRegex := `"0x[0-9a-f]{64}"`
-	hash := `"hash":` + hashRegex
-	stateRoot := `"stateRoot":` + hashRegex
-	signers := `"signers":("0x[0-9a-f]+"|null)`
-	signature := `"signature":"0x[0-9a-f]{192}"`
-
 	tests := map[string]struct {
 		regex string
 	}{
-		"chainId":   {regex: chainId},
-		"number":    {regex: number},
-		"hash":      {regex: hash},
-		"stateRoot": {regex: stateRoot},
-		"signers":   {regex: signers},
-		"signature": {regex: signature},
+		"chainId":   {regex: `"chainId":\d+`},
+		"number":    {regex: `"number":\d+`},
+		"hash":      {regex: `"hash":` + hashRegex},
+		"stateRoot": {regex: `"stateRoot":` + hashRegex},
+		"signers":   {regex: `"signers":("0x[0-9a-f]+"|null)`},
+		"signature": {regex: `"signature":"0x[0-9a-f]{192}"`},
 	}
 
 	for name, test := range tests {
