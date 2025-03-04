@@ -98,7 +98,7 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 	require.Equal(want, got)
 }
 
-func TestCommitteeCertificate_MarshalingProducesExpectedJsonFormatting(t *testing.T) {
+func TestCommitteeCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
 	tests := map[string]struct {
 		cert cert.CommitteeCertificate
 	}{

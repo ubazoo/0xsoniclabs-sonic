@@ -93,7 +93,7 @@ func TestBlockCertificateToJson(t *testing.T) {
 	require.Equal(sig, json.Signature)
 }
 
-func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
+func TestBlockCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
 	tests := map[string]struct {
 		cert cert.BlockCertificate
 	}{
@@ -118,7 +118,7 @@ func validateBlockCertJsonFormat(t *testing.T, cert cert.BlockCertificate) {
 	signature := `"signature":"0x[0-9a-f]{192}"`
 
 	tests := map[string]struct {
-		regex string //*regexp.Regexp
+		regex string
 	}{
 		"chainId":   {regex: chainId},
 		"number":    {regex: number},
