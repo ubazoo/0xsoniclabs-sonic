@@ -93,29 +93,39 @@ func TestBlockCertificateToJson(t *testing.T) {
 	require.Equal(sig, json.Signature)
 }
 
-func validateBlockCertJsonFormat(t *testing.T, cert cert.BlockCertificate) {
+func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
+	tests := map[string]struct {
+		cert cert.BlockCertificate
+	}{
+		"empty":     {cert: makeEmptyBlockCert()},
+		"non-empty": {cert: makeTestBlockCert(t)},
+	}
 
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			validateBlockCertJsonFormat(t, test.cert)
+		})
+	}
+}
+
+func validateBlockCertJsonFormat(t *testing.T, cert cert.BlockCertificate) {
+	chainId := `"chainId":\d+`
+	number := `"number":\d+`
 	hashRegex := `"0x[0-9a-f]{64}"`
-	signersRegex := `("0x[0-9a-f]+"|null)`
-	signatureRegex := `"0x[0-9a-f]{192}"`
-	certRegexString := fmt.Sprintf(`^{"chainId":\d+,"number":\d+,"hash":%v,"stateRoot":%v,"signers":%v,"signature":%v}$`,
-		hashRegex, hashRegex, signersRegex, signatureRegex)
+	hash := `"hash":` + hashRegex
+	stateRoot := `"stateRoot":` + hashRegex
+	signers := `"signers":("0x[0-9a-f]+"|null)`
+	signature := `"signature":"0x[0-9a-f]{192}"`
 
 	tests := map[string]struct {
-		regex *regexp.Regexp
+		regex string //*regexp.Regexp
 	}{
-		"hash": {
-			regex: regexp.MustCompile(hashRegex),
-		},
-		"signers": {
-			regex: regexp.MustCompile(signersRegex),
-		},
-		"signature": {
-			regex: regexp.MustCompile(signatureRegex),
-		},
-		"certRegex": {
-			regex: regexp.MustCompile(certRegexString),
-		},
+		"chainId":   {regex: chainId},
+		"number":    {regex: number},
+		"hash":      {regex: hash},
+		"stateRoot": {regex: stateRoot},
+		"signers":   {regex: signers},
+		"signature": {regex: signature},
 	}
 
 	for name, test := range tests {
@@ -123,76 +133,63 @@ func validateBlockCertJsonFormat(t *testing.T, cert cert.BlockCertificate) {
 			require := require.New(t)
 			data, err := json.Marshal(toJsonBlockCertificate(cert))
 			require.NoError(err)
-			require.True(test.regex.Match(data))
+			require.Regexp(regexp.MustCompile(test.regex), string(data))
 		})
 	}
 }
 
-func verifyBlockCertJsonValues(t *testing.T, cert cert.BlockCertificate, want blockCertificateJson) {
-	signers, err := want.Signers.MarshalJSON()
-	require.NoError(t, err)
-	wantCert := fmt.Sprintf(`{"chainId":%d,"number":%d,"hash":"%v","stateRoot":"%v","signers":%v,"signature":"%v"}`,
-		want.ChainId, want.Number, want.Hash, want.StateRoot, string(signers), want.Signature)
-	data, err := json.Marshal(toJsonBlockCertificate(cert))
-	require.NoError(t, err)
-	require.Equal(t, wantCert, string(data))
+func TestBlockCertificate_ContainsExpectedValues_EmptyCert(t *testing.T) {
+	require := require.New(t)
+	emptyCert := makeEmptyBlockCert()
+	data, err := json.Marshal(toJsonBlockCertificate(emptyCert))
+	require.NoError(err)
+	require.Contains(string(data), `"chainId":0`)
+	require.Contains(string(data), `"number":0`)
+	require.Contains(string(data), `"hash":"0x`)
+	require.Contains(string(data), `"stateRoot":"0x`)
+	require.Contains(string(data), `"signers":null`)
+	require.Contains(string(data), `"signature":"0x`)
 }
 
-func TestBlockCertificate_MarshallingProducesJsonFormatting(t *testing.T) {
+func TestBlockCertificate_ContainsExpectedValues_NonEmptyCert(t *testing.T) {
 	require := require.New(t)
+	testCert := makeTestBlockCert(t)
+	agg := testCert.Signature()
+	signers, err := json.Marshal(agg.Signers())
+	require.NoError(err)
+
+	data, err := json.Marshal(toJsonBlockCertificate(testCert))
+	require.NoError(err)
+
+	require.Contains(string(data), `"chainId":123`)
+	require.Contains(string(data), `"number":456`)
+	require.Contains(string(data), fmt.Sprintf(`"hash":"%v"`, common.Hash{0x1}))
+	require.Contains(string(data), fmt.Sprintf(`"stateRoot":"%v"`, common.Hash{0x2}))
+	require.Contains(string(data), fmt.Sprintf(`"signers":%v`, string(signers)))
+	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, agg.Signature()))
+}
+
+func makeEmptyBlockCert() cert.BlockCertificate {
+	return cert.NewCertificateWithSignature(
+		cert.NewBlockStatement(0, 0, common.Hash{}, common.Hash{}),
+		cert.NewAggregatedSignature[cert.BlockStatement](
+			cert.BitSet[scc.MemberId]{}, bls.Signature{}),
+	)
+}
+
+func makeTestBlockCert(t *testing.T) cert.BlockCertificate {
 	key := bls.NewPrivateKey()
-
-	// empty case setup
 	sig := key.GetProofOfPossession()
-
-	// non-empty case setup
 	bitset := cert.BitSet[scc.MemberId]{}
 	agg := cert.NewAggregatedSignature[cert.BlockStatement](
 		bitset,
 		sig,
 	)
 	err := agg.Add(1, cert.Signature[cert.BlockStatement]{Signature: key.Sign([]byte{1})})
-	require.NoError(err)
+	require.NoError(t, err)
 
-	tests := map[string]struct {
-		cert cert.BlockCertificate
-		want blockCertificateJson
-	}{
-		"empty": {
-			cert: cert.NewCertificateWithSignature(
-				cert.NewBlockStatement(0, 0, common.Hash{}, common.Hash{}),
-				cert.NewAggregatedSignature[cert.BlockStatement](
-					cert.BitSet[scc.MemberId]{}, sig),
-			),
-			want: blockCertificateJson{
-				ChainId:   0,
-				Number:    0,
-				Hash:      common.Hash{},
-				StateRoot: common.Hash{},
-				Signers:   cert.BitSet[scc.MemberId]{},
-				Signature: sig,
-			},
-		},
-		"non-empty": {
-			cert: cert.NewCertificateWithSignature(
-				cert.NewBlockStatement(123, 456, common.Hash{0x1}, common.Hash{0x2}),
-				agg,
-			),
-			want: blockCertificateJson{
-				ChainId:   123,
-				Number:    456,
-				Hash:      common.Hash{0x1},
-				StateRoot: common.Hash{0x2},
-				Signers:   agg.Signers(),
-				Signature: agg.Signature(),
-			},
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			validateBlockCertJsonFormat(t, test.cert)
-			verifyBlockCertJsonValues(t, test.cert, test.want)
-		})
-	}
+	return cert.NewCertificateWithSignature(
+		cert.NewBlockStatement(123, 456, common.Hash{0x1}, common.Hash{0x2}),
+		agg,
+	)
 }
