@@ -151,6 +151,10 @@ func TestCommitteeCertificate_ContainsExpectedValues_NonEmptyCertificate(t *test
 	require := require.New(t)
 	cert := makeTestCommitteeCert(t)
 	member := cert.Subject().Committee.Members()[0]
+	agg := cert.Signature()
+	signers, err := json.Marshal(agg.Signers())
+	require.NoError(err)
+
 	data, err := json.Marshal(toJsonCommitteeCertificate(cert))
 	require.NoError(err)
 
@@ -160,8 +164,8 @@ func TestCommitteeCertificate_ContainsExpectedValues_NonEmptyCertificate(t *test
 	require.Contains(string(data), `"chainId":123`)
 	require.Contains(string(data), `"period":456`)
 	require.Contains(string(data), memberString)
-	require.Contains(string(data), `"signers":"0x`)
-	require.Contains(string(data), `"signature":"0x`)
+	require.Contains(string(data), fmt.Sprintf(`"signers":%v`, string(signers)))
+	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, agg.Signature()))
 }
 
 func makeEmptyCommitteeCert() cert.CommitteeCertificate {
