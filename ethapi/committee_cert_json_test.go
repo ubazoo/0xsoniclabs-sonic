@@ -3,7 +3,6 @@ package ethapi
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -142,7 +141,7 @@ func TestCommitteeCertificate_EmptyCertificate_ContainsExpectedValues(t *testing
 	require.Contains(string(data), `"period":0`)
 	require.Contains(string(data), `"members":null`)
 	require.Contains(string(data), `"signers":null`)
-	require.Contains(string(data), `"signature":"0xc0`+strings.Repeat("00", 95)+`"`)
+	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, bls.Signature{}))
 }
 
 func TestCommitteeCertificate_NonEmptyCertificate_ContainsExpectedValues(t *testing.T) {

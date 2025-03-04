@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
-	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -131,10 +130,10 @@ func TestBlockCertificate_EmptyCertificate_ContainsExpectedValues(t *testing.T) 
 	require.NoError(err)
 	require.Contains(string(data), `"chainId":0`)
 	require.Contains(string(data), `"number":0`)
-	require.Contains(string(data), `"hash":"0x`+strings.Repeat("00", 32)+`"`)
-	require.Contains(string(data), `"stateRoot":"0x`+strings.Repeat("00", 32)+`"`)
+	require.Contains(string(data), fmt.Sprintf(`"hash":"%v"`, common.Hash{}))
+	require.Contains(string(data), fmt.Sprintf(`"stateRoot":"%v"`, common.Hash{}))
 	require.Contains(string(data), `"signers":null`)
-	require.Contains(string(data), `"signature":"0xc0`+strings.Repeat("00", 95)+`"`)
+	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, bls.Signature{}))
 }
 
 func TestBlockCertificate_NonEmptyCertificate_ContainsExpectedValues(t *testing.T) {
