@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -94,21 +95,13 @@ func TestBlockCertificateToJson(t *testing.T) {
 }
 
 func TestBlockCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
-	tests := map[string]cert.BlockCertificate{
-		"empty":     makeEmptyBlockCert(),
+	certs := map[string]cert.BlockCertificate{
+		"empty":     cert.BlockCertificate{},
 		"non-empty": makeTestBlockCert(t),
 	}
 
-	for name, cert := range tests {
-		t.Run(name, func(t *testing.T) {
-			validateBlockCertJsonFormat(t, cert)
-		})
-	}
-}
-
-func validateBlockCertJsonFormat(t *testing.T, cert cert.BlockCertificate) {
 	hashRegex := `"0x[0-9a-f]{64}"`
-	tests := map[string]string{
+	regexes := map[string]string{
 		"chainId":   `"chainId":\d+`,
 		"number":    `"number":\d+`,
 		"hash":      `"hash":` + hashRegex,
@@ -117,30 +110,34 @@ func validateBlockCertJsonFormat(t *testing.T, cert cert.BlockCertificate) {
 		"signature": `"signature":"0x[0-9a-f]{192}"`,
 	}
 
-	for name, regex := range tests {
+	for name, cert := range certs {
 		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-			data, err := json.Marshal(toJsonBlockCertificate(cert))
-			require.NoError(err)
-			require.Regexp(regexp.MustCompile(regex), string(data))
+			for name, regex := range regexes {
+				t.Run(name, func(t *testing.T) {
+					require := require.New(t)
+					data, err := json.Marshal(toJsonBlockCertificate(cert))
+					require.NoError(err)
+					require.Regexp(regexp.MustCompile(regex), string(data))
+				})
+			}
 		})
 	}
 }
 
-func TestBlockCertificate_ContainsExpectedValues_EmptyCertificate(t *testing.T) {
+func TestBlockCertificate_EmptyCertificate_ContainsExpectedValues(t *testing.T) {
 	require := require.New(t)
-	emptyCert := makeEmptyBlockCert()
+	emptyCert := cert.BlockCertificate{}
 	data, err := json.Marshal(toJsonBlockCertificate(emptyCert))
 	require.NoError(err)
 	require.Contains(string(data), `"chainId":0`)
 	require.Contains(string(data), `"number":0`)
-	require.Contains(string(data), `"hash":"0x`)
-	require.Contains(string(data), `"stateRoot":"0x`)
+	require.Contains(string(data), `"hash":"0x`+strings.Repeat("00", 32)+`"`)
+	require.Contains(string(data), `"stateRoot":"0x`+strings.Repeat("00", 32)+`"`)
 	require.Contains(string(data), `"signers":null`)
-	require.Contains(string(data), `"signature":"0x`)
+	require.Contains(string(data), `"signature":"0xc0`+strings.Repeat("00", 95)+`"`)
 }
 
-func TestBlockCertificate_ContainsExpectedValues_NonEmptyCertificate(t *testing.T) {
+func TestBlockCertificate_NonEmptyCertificate_ContainsExpectedValues(t *testing.T) {
 	require := require.New(t)
 	testCert := makeTestBlockCert(t)
 	agg := testCert.Signature()
@@ -156,14 +153,6 @@ func TestBlockCertificate_ContainsExpectedValues_NonEmptyCertificate(t *testing.
 	require.Contains(string(data), fmt.Sprintf(`"stateRoot":"%v"`, common.Hash{0x2}))
 	require.Contains(string(data), fmt.Sprintf(`"signers":%v`, string(signers)))
 	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, agg.Signature()))
-}
-
-func makeEmptyBlockCert() cert.BlockCertificate {
-	return cert.NewCertificateWithSignature(
-		cert.NewBlockStatement(0, 0, common.Hash{}, common.Hash{}),
-		cert.NewAggregatedSignature[cert.BlockStatement](
-			cert.BitSet[scc.MemberId]{}, bls.Signature{}),
-	)
 }
 
 func makeTestBlockCert(t *testing.T) cert.BlockCertificate {

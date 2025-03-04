@@ -3,6 +3,7 @@ package ethapi
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -99,24 +100,17 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 }
 
 func TestCommitteeCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
-	tests := map[string]cert.CommitteeCertificate{
-		"empty cert":     makeEmptyCommitteeCert(),
+	certs := map[string]cert.CommitteeCertificate{
+		"empty cert":     cert.CommitteeCertificate{},
 		"non-empty cert": makeTestCommitteeCert(t),
 	}
-	for name, cert := range tests {
-		t.Run(name, func(t *testing.T) {
-			validateCommitteeCertJsonFormat(t, cert)
-		})
-	}
-}
 
-func validateCommitteeCertJsonFormat(t *testing.T, cert cert.CommitteeCertificate) {
 	keyRegex := `("0x[0-9a-f]{96}")`
 	signatureRegex := `("0x[0-9a-f]{192}")`
-	member := fmt.Sprintf(`(\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]|null)`,
+	member := fmt.Sprintf(`"members":(\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]|null)`,
 		keyRegex, signatureRegex)
 
-	tests := map[string]string{
+	regexes := map[string]string{
 		"chainId":   `"chainId":\d+`,
 		"period":    `"period":\d+`,
 		"member":    member,
@@ -124,19 +118,23 @@ func validateCommitteeCertJsonFormat(t *testing.T, cert cert.CommitteeCertificat
 		"signature": `"signature":` + signatureRegex,
 	}
 
-	for name, regex := range tests {
+	for name, cert := range certs {
 		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-			data, err := json.Marshal(toJsonCommitteeCertificate(cert))
-			require.NoError(err)
-			require.Regexp(regex, string(data))
+			for name, regex := range regexes {
+				t.Run(name, func(t *testing.T) {
+					require := require.New(t)
+					data, err := json.Marshal(toJsonCommitteeCertificate(cert))
+					require.NoError(err)
+					require.Regexp(regex, string(data))
+				})
+			}
 		})
 	}
 }
 
-func TestCommitteeCertificate_ContainsExpectedValues_EmptyCertificate(t *testing.T) {
+func TestCommitteeCertificate_EmptyCertificate_ContainsExpectedValues(t *testing.T) {
 	require := require.New(t)
-	cert := makeEmptyCommitteeCert()
+	cert := cert.CommitteeCertificate{}
 	data, err := json.Marshal(toJsonCommitteeCertificate(cert))
 	require.NoError(err)
 
@@ -144,10 +142,10 @@ func TestCommitteeCertificate_ContainsExpectedValues_EmptyCertificate(t *testing
 	require.Contains(string(data), `"period":0`)
 	require.Contains(string(data), `"members":null`)
 	require.Contains(string(data), `"signers":null`)
-	require.Contains(string(data), `"signature":"0x`)
+	require.Contains(string(data), `"signature":"0xc0`+strings.Repeat("00", 95)+`"`)
 }
 
-func TestCommitteeCertificate_ContainsExpectedValues_NonEmptyCertificate(t *testing.T) {
+func TestCommitteeCertificate_NonEmptyCertificate_ContainsExpectedValues(t *testing.T) {
 	require := require.New(t)
 	cert := makeTestCommitteeCert(t)
 	member := cert.Subject().Committee.Members()[0]
@@ -158,7 +156,7 @@ func TestCommitteeCertificate_ContainsExpectedValues_NonEmptyCertificate(t *test
 	data, err := json.Marshal(toJsonCommitteeCertificate(cert))
 	require.NoError(err)
 
-	memberString := fmt.Sprintf(`{"PublicKey":"%v","ProofOfPossession":"%v","VotingPower":%v}`,
+	memberString := fmt.Sprintf(`"members":[{"PublicKey":"%v","ProofOfPossession":"%v","VotingPower":%v}]`,
 		member.PublicKey, member.ProofOfPossession, member.VotingPower)
 
 	require.Contains(string(data), `"chainId":123`)
@@ -166,14 +164,6 @@ func TestCommitteeCertificate_ContainsExpectedValues_NonEmptyCertificate(t *test
 	require.Contains(string(data), memberString)
 	require.Contains(string(data), fmt.Sprintf(`"signers":%v`, string(signers)))
 	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, agg.Signature()))
-}
-
-func makeEmptyCommitteeCert() cert.CommitteeCertificate {
-	return cert.NewCertificateWithSignature(
-		cert.NewCommitteeStatement(0, 0, scc.NewCommittee()),
-		cert.NewAggregatedSignature[cert.CommitteeStatement](
-			cert.BitSet[scc.MemberId]{}, bls.Signature{}),
-	)
 }
 
 func makeTestCommitteeCert(t *testing.T) cert.CommitteeCertificate {
