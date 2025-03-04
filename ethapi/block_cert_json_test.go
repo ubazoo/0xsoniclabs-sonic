@@ -94,39 +94,35 @@ func TestBlockCertificateToJson(t *testing.T) {
 }
 
 func TestBlockCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
-	tests := map[string]struct {
-		cert cert.BlockCertificate
-	}{
-		"empty":     {cert: makeEmptyBlockCert()},
-		"non-empty": {cert: makeTestBlockCert(t)},
+	tests := map[string]cert.BlockCertificate{
+		"empty":     makeEmptyBlockCert(),
+		"non-empty": makeTestBlockCert(t),
 	}
 
-	for name, test := range tests {
+	for name, cert := range tests {
 		t.Run(name, func(t *testing.T) {
-			validateBlockCertJsonFormat(t, test.cert)
+			validateBlockCertJsonFormat(t, cert)
 		})
 	}
 }
 
 func validateBlockCertJsonFormat(t *testing.T, cert cert.BlockCertificate) {
 	hashRegex := `"0x[0-9a-f]{64}"`
-	tests := map[string]struct {
-		regex string
-	}{
-		"chainId":   {regex: `"chainId":\d+`},
-		"number":    {regex: `"number":\d+`},
-		"hash":      {regex: `"hash":` + hashRegex},
-		"stateRoot": {regex: `"stateRoot":` + hashRegex},
-		"signers":   {regex: `"signers":("0x[0-9a-f]+"|null)`},
-		"signature": {regex: `"signature":"0x[0-9a-f]{192}"`},
+	tests := map[string]string{
+		"chainId":   `"chainId":\d+`,
+		"number":    `"number":\d+`,
+		"hash":      `"hash":` + hashRegex,
+		"stateRoot": `"stateRoot":` + hashRegex,
+		"signers":   `"signers":("0x[0-9a-f]+"|null)`,
+		"signature": `"signature":"0x[0-9a-f]{192}"`,
 	}
 
-	for name, test := range tests {
+	for name, regex := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			data, err := json.Marshal(toJsonBlockCertificate(cert))
 			require.NoError(err)
-			require.Regexp(regexp.MustCompile(test.regex), string(data))
+			require.Regexp(regexp.MustCompile(regex), string(data))
 		})
 	}
 }

@@ -99,15 +99,13 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 }
 
 func TestCommitteeCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
-	tests := map[string]struct {
-		cert cert.CommitteeCertificate
-	}{
-		"empty cert":     {cert: makeEmptyCommitteeCert()},
-		"non-empty cert": {makeTestCommitteeCert(t)},
+	tests := map[string]cert.CommitteeCertificate{
+		"empty cert":     makeEmptyCommitteeCert(),
+		"non-empty cert": makeTestCommitteeCert(t),
 	}
-	for name, test := range tests {
+	for name, cert := range tests {
 		t.Run(name, func(t *testing.T) {
-			validateCommitteeCertJsonFormat(t, test.cert)
+			validateCommitteeCertJsonFormat(t, cert)
 		})
 	}
 }
@@ -118,22 +116,20 @@ func validateCommitteeCertJsonFormat(t *testing.T, cert cert.CommitteeCertificat
 	member := fmt.Sprintf(`(\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]|null)`,
 		keyRegex, signatureRegex)
 
-	tests := map[string]struct {
-		regex string
-	}{
-		"chainId":   {regex: `"chainId":\d+`},
-		"period":    {regex: `"period":\d+`},
-		"member":    {regex: member},
-		"signers":   {regex: `"signers":("0x[0-9a-f]+"|null)`},
-		"signature": {regex: `"signature":` + signatureRegex},
+	tests := map[string]string{
+		"chainId":   `"chainId":\d+`,
+		"period":    `"period":\d+`,
+		"member":    member,
+		"signers":   `"signers":("0x[0-9a-f]+"|null)`,
+		"signature": `"signature":` + signatureRegex,
 	}
 
-	for name, test := range tests {
+	for name, regex := range tests {
 		t.Run(name, func(t *testing.T) {
 			require := require.New(t)
 			data, err := json.Marshal(toJsonCommitteeCertificate(cert))
 			require.NoError(err)
-			require.Regexp(test.regex, string(data))
+			require.Regexp(regex, string(data))
 		})
 	}
 }
