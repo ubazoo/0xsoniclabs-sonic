@@ -165,6 +165,26 @@ func TestCommitteeCertificate_NonEmptyCertificate_ContainsExpectedValues(t *test
 	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, agg.Signature()))
 }
 
+func TestCommitteeCertificate_ContainsOnlyExpectedFields(t *testing.T) {
+	require := require.New(t)
+	keyRegex := `("0x[0-9a-f]{96}")`
+	signatureRegex := `("0x[0-9a-f]{192}")`
+	member := fmt.Sprintf(`"members":\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":1}\]`,
+		keyRegex, signatureRegex)
+
+	chainId := `"chainId":\d+`
+	period := `"period":\d+`
+	signers := `"signers":("0x[0-9a-f]+"|null)`
+	signature := `"signature":` + signatureRegex
+
+	validFields := fmt.Sprintf(`{(%v,*|%v,*|%v,*|%v,*|%v,*){5}}`, chainId, period, member, signers, signature)
+
+	cert := makeTestCommitteeCert(t)
+	data, err := json.Marshal(toJsonCommitteeCertificate(cert))
+	require.NoError(err)
+	require.Regexp(validFields, string(data))
+}
+
 func makeTestCommitteeCert(t *testing.T) cert.CommitteeCertificate {
 	key := bls.NewPrivateKey()
 	members := []scc.Member{
