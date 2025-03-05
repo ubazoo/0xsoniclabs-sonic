@@ -2,6 +2,7 @@ package ethapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -130,6 +131,37 @@ func TestBlockCertificate_ValidateJsonSchema(t *testing.T) {
 	result = schema.Validate(data)
 	res = result.IsValid()
 	require.True(res)
+}
+
+func TestBlockCertificate_EmptyCertificate_ContainsExpectedValues(t *testing.T) {
+	require := require.New(t)
+	emptyCert := cert.BlockCertificate{}
+	data, err := json.Marshal(toJsonBlockCertificate(emptyCert))
+	require.NoError(err)
+	require.Contains(string(data), `"chainId":0`)
+	require.Contains(string(data), `"number":0`)
+	require.Contains(string(data), fmt.Sprintf(`"hash":"%v"`, common.Hash{}))
+	require.Contains(string(data), fmt.Sprintf(`"stateRoot":"%v"`, common.Hash{}))
+	require.Contains(string(data), `"signers":null`)
+	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, bls.Signature{}))
+}
+
+func TestBlockCertificate_NonEmptyCertificate_ContainsExpectedValues(t *testing.T) {
+	require := require.New(t)
+	testCert := makeTestBlockCert(t)
+	agg := testCert.Signature()
+	signers, err := json.Marshal(agg.Signers())
+	require.NoError(err)
+
+	data, err := json.Marshal(toJsonBlockCertificate(testCert))
+	require.NoError(err)
+
+	require.Contains(string(data), `"chainId":123`)
+	require.Contains(string(data), `"number":456`)
+	require.Contains(string(data), fmt.Sprintf(`"hash":"%v"`, common.Hash{0x1}))
+	require.Contains(string(data), fmt.Sprintf(`"stateRoot":"%v"`, common.Hash{0x2}))
+	require.Contains(string(data), fmt.Sprintf(`"signers":%v`, string(signers)))
+	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, agg.Signature()))
 }
 
 func makeTestBlockCert(t *testing.T) cert.BlockCertificate {

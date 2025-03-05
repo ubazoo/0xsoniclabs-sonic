@@ -2,6 +2,7 @@ package ethapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -146,6 +147,40 @@ func TestCommitteeCertificate_ValidateJsonSchema(t *testing.T) {
 	result = schema.Validate(data)
 	res = result.IsValid()
 	require.True(res)
+}
+
+func TestCommitteeCertificate_EmptyCertificate_ContainsExpectedValues(t *testing.T) {
+	require := require.New(t)
+	cert := cert.CommitteeCertificate{}
+	data, err := json.Marshal(toJsonCommitteeCertificate(cert))
+	require.NoError(err)
+
+	require.Contains(string(data), `"chainId":0`)
+	require.Contains(string(data), `"period":0`)
+	require.Contains(string(data), `"members":null`)
+	require.Contains(string(data), `"signers":null`)
+	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, bls.Signature{}))
+}
+
+func TestCommitteeCertificate_NonEmptyCertificate_ContainsExpectedValues(t *testing.T) {
+	require := require.New(t)
+	cert := makeTestCommitteeCert(t)
+	member := cert.Subject().Committee.Members()[0]
+	agg := cert.Signature()
+	signers, err := json.Marshal(agg.Signers())
+	require.NoError(err)
+
+	data, err := json.Marshal(toJsonCommitteeCertificate(cert))
+	require.NoError(err)
+
+	memberString := fmt.Sprintf(`"members":[{"PublicKey":"%v","ProofOfPossession":"%v","VotingPower":%v}]`,
+		member.PublicKey, member.ProofOfPossession, member.VotingPower)
+
+	require.Contains(string(data), `"chainId":123`)
+	require.Contains(string(data), `"period":456`)
+	require.Contains(string(data), memberString)
+	require.Contains(string(data), fmt.Sprintf(`"signers":%v`, string(signers)))
+	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, agg.Signature()))
 }
 
 func makeTestCommitteeCert(t *testing.T) cert.CommitteeCertificate {
