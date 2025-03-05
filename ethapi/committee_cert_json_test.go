@@ -2,12 +2,12 @@ package ethapi
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
+	"github.com/kaptinlin/jsonschema"
 	"github.com/stretchr/testify/require"
 )
 
@@ -98,91 +98,54 @@ func TestCommitteeCertificateToJson(t *testing.T) {
 	require.Equal(want, got)
 }
 
-func TestCommitteeCertificate_JsonEncodingMatchesExpectedFormat(t *testing.T) {
-	certs := map[string]cert.CommitteeCertificate{
-		"empty cert":     cert.CommitteeCertificate{},
-		"non-empty cert": makeTestCommitteeCert(t),
-	}
-
-	keyRegex := `("0x[0-9a-f]{96}")`
-	signatureRegex := `("0x[0-9a-f]{192}")`
-	member := fmt.Sprintf(`"members":(\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":\d+}+\]|null)`,
-		keyRegex, signatureRegex)
-
-	regexes := map[string]string{
-		"chainId":   `"chainId":\d+`,
-		"period":    `"period":\d+`,
-		"member":    member,
-		"signers":   `"signers":("0x[0-9a-f]+"|null)`,
-		"signature": `"signature":` + signatureRegex,
-	}
-
-	for name, cert := range certs {
-		t.Run(name, func(t *testing.T) {
-			for name, regex := range regexes {
-				t.Run(name, func(t *testing.T) {
-					require := require.New(t)
-					data, err := json.Marshal(toJsonCommitteeCertificate(cert))
-					require.NoError(err)
-					require.Regexp(regex, string(data))
-				})
-			}
-		})
-	}
-}
-
-func TestCommitteeCertificate_EmptyCertificate_ContainsExpectedValues(t *testing.T) {
+func TestCommitteeCertificate_ValidateJsonSchema(t *testing.T) {
 	require := require.New(t)
-	cert := cert.CommitteeCertificate{}
-	data, err := json.Marshal(toJsonCommitteeCertificate(cert))
+
+	schemaJSON := `{
+		"type": "array",
+		"properties": {
+			"chainId": {"type": "integer"},
+			"period": {"type": "integer"},
+			"members": {
+				"type": "array",
+				"items": {
+					"type": "object",
+					"properties": {
+						"PublicKey": {"type": "string","pattern": "^0x[0-9a-f]{96}$"},
+						"ProofOfPossession": {"type": "string","pattern": "^0x[0-9a-f]{192}$"},
+						"VotingPower": {"type": "integer"}
+					},
+					"required": ["PublicKey", "ProofOfPossession", "VotingPower"]
+				}
+			},
+			"signers": {"type": "string","pattern": "^0x[0-9a-f]*$"},
+			"signature": {"type": "string","pattern": "^0x[0-9a-f]{192}$"}
+		},
+		"required": ["chainId", "period", "members", "signers", "signature"]
+	}`
+
+	// compile schema
+	compiler := jsonschema.NewCompiler()
+	schema, err := compiler.Compile([]byte(schemaJSON))
 	require.NoError(err)
 
-	require.Contains(string(data), `"chainId":0`)
-	require.Contains(string(data), `"period":0`)
-	require.Contains(string(data), `"members":null`)
-	require.Contains(string(data), `"signers":null`)
-	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, bls.Signature{}))
-}
-
-func TestCommitteeCertificate_NonEmptyCertificate_ContainsExpectedValues(t *testing.T) {
-	require := require.New(t)
-	cert := makeTestCommitteeCert(t)
-	member := cert.Subject().Committee.Members()[0]
-	agg := cert.Signature()
-	signers, err := json.Marshal(agg.Signers())
+	// validate certificate with values
+	testCert := makeTestCommitteeCert(t)
+	data, err := json.Marshal(toJsonCommitteeCertificate(testCert))
 	require.NoError(err)
 
-	data, err := json.Marshal(toJsonCommitteeCertificate(cert))
+	result := schema.Validate(data)
+	res := result.IsValid()
+	require.True(res)
+
+	// validate empty certificate
+	testCert = cert.CommitteeCertificate{}
+	data, err = json.Marshal(toJsonCommitteeCertificate(testCert))
 	require.NoError(err)
 
-	memberString := fmt.Sprintf(`"members":[{"PublicKey":"%v","ProofOfPossession":"%v","VotingPower":%v}]`,
-		member.PublicKey, member.ProofOfPossession, member.VotingPower)
-
-	require.Contains(string(data), `"chainId":123`)
-	require.Contains(string(data), `"period":456`)
-	require.Contains(string(data), memberString)
-	require.Contains(string(data), fmt.Sprintf(`"signers":%v`, string(signers)))
-	require.Contains(string(data), fmt.Sprintf(`"signature":"%v"`, agg.Signature()))
-}
-
-func TestCommitteeCertificate_ContainsOnlyExpectedFields(t *testing.T) {
-	require := require.New(t)
-	keyRegex := `("0x[0-9a-f]{96}")`
-	signatureRegex := `("0x[0-9a-f]{192}")`
-	member := fmt.Sprintf(`"members":\[{"PublicKey":%v,"ProofOfPossession":%v,"VotingPower":1}\]`,
-		keyRegex, signatureRegex)
-
-	chainId := `"chainId":\d+`
-	period := `"period":\d+`
-	signers := `"signers":("0x[0-9a-f]+"|null)`
-	signature := `"signature":` + signatureRegex
-
-	validFields := fmt.Sprintf(`{(%v,*|%v,*|%v,*|%v,*|%v,*){5}}`, chainId, period, member, signers, signature)
-
-	cert := makeTestCommitteeCert(t)
-	data, err := json.Marshal(toJsonCommitteeCertificate(cert))
-	require.NoError(err)
-	require.Regexp(validFields, string(data))
+	result = schema.Validate(data)
+	res = result.IsValid()
+	require.True(res)
 }
 
 func makeTestCommitteeCert(t *testing.T) cert.CommitteeCertificate {
