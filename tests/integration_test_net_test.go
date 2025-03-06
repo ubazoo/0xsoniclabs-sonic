@@ -2,6 +2,7 @@ package tests
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -61,7 +62,7 @@ func TestIntegrationTestNet_CanEndowAccountsWithTokens(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		increment := int64(1000)
 
-		receipt, err := net.EndowAccount(address, increment)
+		receipt, err := net.EndowAccount(address, big.NewInt(increment))
 		if err != nil {
 			t.Fatalf("Failed to endow account 1: %v", err)
 		}
@@ -107,5 +108,19 @@ func TestIntegrationTestNet_CanInteractWithContract(t *testing.T) {
 	}
 	if receipt.Status != types.ReceiptStatusSuccessful {
 		t.Errorf("Contract deployment failed: %v", receipt)
+	}
+}
+
+func TestIntegrationTestNet_CanSpawnParallelSessions(t *testing.T) {
+	net := StartIntegrationTestNet(t)
+
+	for i := range 15 {
+		t.Run(fmt.Sprint("SpawnSession", i), func(t *testing.T) {
+			t.Parallel()
+			session := net.SpawnSession(t)
+
+			receipt, err := session.EndowAccount(common.Address{0x42}, big.NewInt(1000))
+			checkTxExecution(t, receipt, err)
+		})
 	}
 }
