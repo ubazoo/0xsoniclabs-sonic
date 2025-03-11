@@ -30,9 +30,9 @@ import (
 type GenesisJson struct {
 	Rules            opera.Rules
 	BlockZeroTime    time.Time
-	Accounts         []Account      `json:",omitempty"`
-	Txs              []Transaction  `json:",omitempty"`
-	GenesisCommittee *scc.Committee `json:",omitempty"`
+	Accounts         []Account     `json:",omitempty"`
+	Txs              []Transaction `json:",omitempty"`
+	GenesisCommittee []scc.Member  `json:",omitempty"`
 }
 
 type Account struct {
@@ -140,11 +140,18 @@ func ApplyGenesisJson(json *GenesisJson) (*genesisstore.Store, error) {
 	if json.GenesisCommittee == nil {
 		return nil, fmt.Errorf("genesis committee must be set")
 	}
+	if len(json.GenesisCommittee) == 0 {
+		return nil, fmt.Errorf("genesis committee must have at least one member")
+	}
+	genesisCommittee := scc.NewCommittee(json.GenesisCommittee...)
+	if err := genesisCommittee.Validate(); err != nil {
+		return nil, fmt.Errorf("genesis committee is invalid")
+	}
 	builder.SetGenesisCommitteeCertificate(cert.NewCertificate(
 		cert.NewCommitteeStatement(
 			json.Rules.NetworkID,
 			scc.Period(0),
-			*json.GenesisCommittee,
+			genesisCommittee,
 		),
 	))
 

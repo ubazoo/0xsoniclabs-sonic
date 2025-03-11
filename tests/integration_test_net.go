@@ -259,7 +259,7 @@ func StartIntegrationTestNetWithJsonGenesis(
 	if err := committee.Validate(); err != nil {
 		t.Fatal("failed to validate the committee:", err)
 	}
-	jsonGenesis.GenesisCommittee = &committee
+	jsonGenesis.GenesisCommittee = committee.Members()
 
 	encoded, err := json.MarshalIndent(jsonGenesis, "", "  ")
 	if err != nil {
