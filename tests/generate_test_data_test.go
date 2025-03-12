@@ -2,67 +2,63 @@ package tests
 
 import (
 	"iter"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-// generateTestDataBasedOnModificationCombinations generates all possible versions of a
-// given type based on the combinations of modifications.
-// The iterator works around a function modify(T, []Piece) T, which shall modify
-// an newly constructed instance of T with the provided piece-modifiers.
+// generateTestDataBasedOnModificationCombinations generates all possible
+// versions of a given type based on the combinations of modifications.
+// Each yielded value is derived by constructing an element of T using the
+// constructor function, and then applying a series of modifications to it.
 //
 // Arguments:
-//   - constructor: a function that constructs a new instance of T, for each version
-//     to be based on an unmodified instance.
-//   - pieces: a list of lists of pieces, where each list of pieces represents a
-//     domain of possible modifications.
-//   - modify: a function that modifies an instance of T with the provided pieces.
+//   - constructor: a function that constructs a new instance of T, for each
+//     version to be based on an unmodified instance.
+//   - modification: a list of modifications to be applied on emitted values.
 //
 // Returns:
 // - an iterator that yields all possible versions of T based on the combinations
-func generateTestDataBasedOnModificationCombinations[T any, Piece any](
+func generateTestDataBasedOnModificationCombinations[T any](
 	constructor func() T,
-	pieces [][]Piece,
-	modify func(tx T, modifier []Piece) T,
+	modification [][]func(T) T,
 ) iter.Seq[T] {
-
 	return func(yield func(data T) bool) {
-		_cartesianProductRecursion(nil, pieces,
-			func(pieces []Piece) bool {
-				v := constructor()
-				v = modify(v, pieces)
-				return yield(v)
-			})
+		for modifications := range cartesianProduct(modification) {
+			cur := constructor()
+			for _, m := range modifications {
+				cur = m(cur)
+			}
+			if !yield(cur) {
+				return
+			}
+		}
+	}
+}
+
+// cartesianProduct generates all possible combinations of elements from the
+// provided element lists.
+func cartesianProduct[T any](elements [][]T) iter.Seq[[]T] {
+	cur := make([]T, 0, len(elements))
+	return func(yield func(data []T) bool) {
+		_cartesianProductRecursion(cur, elements, yield)
 	}
 }
 
 func TestCartesianProduct_CountInstantiations(t *testing.T) {
-
-	count := func(_ int, modifier []int) int {
-		var count int
-		for _, v := range modifier {
-			count += v
-		}
-		return count
+	countInstances := func(pieces [][]int) int {
+		iter := cartesianProduct(pieces)
+		return len(slices.Collect(iter))
 	}
 
-	countInstances := func(pieces [][]int, modifier func(int, []int) int) int {
-		var count int
-		makeZero := func() int { return 0 }
-		for _ = range generateTestDataBasedOnModificationCombinations(makeZero, pieces, modifier) {
-			count++
-		}
-		return count
-	}
-
-	assert.Equal(t, 0, countInstances(nil, count))
-	assert.Equal(t, 1, countInstances([][]int{{1}}, count))
-	assert.Equal(t, 2, countInstances([][]int{{1}, {1, 2}}, count))
-	assert.Equal(t, 4, countInstances([][]int{{1, 2}, {1, 2}}, count))
-	assert.Equal(t, 4, countInstances([][]int{{1}, {1, 2}, {1, 2}}, count))
-	assert.Equal(t, 6, countInstances([][]int{{1}, {1, 2, 3}, {1, 2}}, count))
-	assert.Equal(t, 6, countInstances([][]int{{1}, {1, 2}, {1, 2, 3}}, count))
+	assert.Equal(t, 1, countInstances(nil))
+	assert.Equal(t, 1, countInstances([][]int{{1}}))
+	assert.Equal(t, 2, countInstances([][]int{{1}, {1, 2}}))
+	assert.Equal(t, 4, countInstances([][]int{{1, 2}, {1, 2}}))
+	assert.Equal(t, 4, countInstances([][]int{{1}, {1, 2}, {1, 2}}))
+	assert.Equal(t, 6, countInstances([][]int{{1}, {1, 2, 3}, {1, 2}}))
+	assert.Equal(t, 6, countInstances([][]int{{1}, {1, 2}, {1, 2, 3}}))
 }
 
 func TestCartesianProduct_AcceptsFunctionsAsPieces(t *testing.T) {
@@ -71,31 +67,27 @@ func TestCartesianProduct_AcceptsFunctionsAsPieces(t *testing.T) {
 		A int
 		B int
 	}
-	type modFunc func(t *TestType)
+	type Mod = func(TestType) TestType
 
-	setA := func(a int) modFunc {
-		return func(t *TestType) {
+	setA := func(a int) Mod {
+		return func(t TestType) TestType {
 			t.A = a
+			return t
 		}
 	}
-	setB := func(a int) modFunc {
-		return func(t *TestType) {
+	setB := func(a int) Mod {
+		return func(t TestType) TestType {
 			t.B = a
+			return t
 		}
 	}
 
 	instances := make([]TestType, 0)
 	for v := range generateTestDataBasedOnModificationCombinations(
 		func() TestType { return TestType{} },
-		[][]modFunc{
+		[][]Mod{
 			{setA(1), setA(2)},
 			{setB(1), setB(2)},
-		},
-		func(t TestType, modifiers []modFunc) TestType {
-			for _, m := range modifiers {
-				m(&t)
-			}
-			return t
 		}) {
 		instances = append(instances, v)
 	}
@@ -107,21 +99,14 @@ func TestCartesianProduct_AcceptsFunctionsAsPieces(t *testing.T) {
 	assert.Contains(t, instances, TestType{2, 2})
 }
 
-func _cartesianProductRecursion[T any](current []T, elements [][]T, callback func(data []T) bool) bool {
+func _cartesianProductRecursion[T any](current []T, elements [][]T, yield func([]T) bool) bool {
 	if len(elements) == 0 {
-		if len(current) == 0 {
-			return false
-		}
-		return callback(current)
+		return yield(current)
 	}
 
-	var next [][]T
-	if len(elements) > 1 {
-		next = elements[1:]
-	}
-
+	rest := elements[1:]
 	for _, element := range elements[0] {
-		if !_cartesianProductRecursion(append(current, element), next, callback) {
+		if !_cartesianProductRecursion(append(current, element), rest, yield) {
 			return false
 		}
 	}
