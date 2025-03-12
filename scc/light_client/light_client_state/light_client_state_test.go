@@ -73,7 +73,7 @@ func TestLightClientState_Sync_UpdatesOnlyHeadWhen_SyncToCurrentPeriod(t *testin
 	// setup block for period 1.
 	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*1 + 1)
 	blockCert := cert.NewCertificate(
-		cert.NewBlockStatement(0, blockNumber, common.Hash{0x1}, common.Hash{}))
+		cert.NewBlockStatement(0, blockNumber, common.Hash{0x1}, common.Hash{0x2}))
 
 	// sigh the block certificate with the committee member
 	err := blockCert.Add(scc.MemberId(0), cert.Sign(blockCert.Subject(), key))
@@ -90,6 +90,7 @@ func TestLightClientState_Sync_UpdatesOnlyHeadWhen_SyncToCurrentPeriod(t *testin
 		committee:  scc.NewCommittee(member),
 		headNumber: blockCert.Subject().Number,
 		headHash:   common.Hash{0x1},
+		headRoot:   common.Hash{0x2},
 	}
 	compareStates(t, &want, state)
 }
@@ -266,6 +267,7 @@ func TestLightClientState_Sync_UpdatesState(t *testing.T) {
 		committee:  scc.NewCommittee(member),
 		headNumber: blockNumber,
 		headHash:   common.Hash{0x1},
+		headRoot:   common.Hash{0x2},
 	}
 	compareStates(t, &want, state)
 
@@ -280,6 +282,7 @@ func compareStates(t *testing.T, expected, actual *State) {
 	require.Equal(expected.Head(), actual.Head())
 	require.Equal(expected.period, actual.period)
 	require.Equal(expected.headHash, actual.headHash)
+	require.Equal(expected.StateRoot(), actual.StateRoot())
 	require.True(reflect.DeepEqual(expected.committee, actual.committee))
 }
 
