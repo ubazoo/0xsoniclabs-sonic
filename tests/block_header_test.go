@@ -11,6 +11,7 @@ import (
 
 	"github.com/0xsoniclabs/carmen/go/carmen"
 	"github.com/0xsoniclabs/carmen/go/common/immutable"
+	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/inter"
@@ -24,7 +25,6 @@ import (
 	"github.com/0xsoniclabs/sonic/scc/bls"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter_event_emitter"
-	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -38,12 +38,16 @@ import (
 )
 
 func TestBlockHeader_FakeGenesis_SatisfiesInvariants(t *testing.T) {
-	net := StartIntegrationTestNetWithFakeGenesis(t)
+	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{
+		FeatureSet: opera.AllegroFeatures,
+	})
 	testBlockHeadersOnNetwork(t, net)
 }
 
 func TestBlockHeader_JsonGenesis_SatisfiesInvariants(t *testing.T) {
-	net := StartIntegrationTestNetWithJsonGenesis(t)
+	net := StartIntegrationTestNetWithJsonGenesis(t, IntegrationTestNetOptions{
+		FeatureSet: opera.AllegroFeatures,
+	})
 	testBlockHeadersOnNetwork(t, net)
 }
 

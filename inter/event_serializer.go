@@ -11,9 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 
-	"github.com/0xsoniclabs/sonic/scc"
-	"github.com/0xsoniclabs/sonic/scc/bls"
-	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/utils/cser"
 )
 
@@ -80,9 +77,23 @@ func (e *Event) MarshalCSER(w *cser.Writer) error {
 		w.Bool(e.AnyCommitteeSignatures())
 		w.Bool(e.AnyBlockSignatures())
 	}
-	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() || e.AnyCommitteeSignatures() || e.AnyBlockSignatures() {
+
+	// add the payload hash unless the payload is empty
+	payloadIsEmpty := true
+	payloadIsEmpty = payloadIsEmpty && !e.AnyTxs()
+	if e.Version() == 1 {
+		payloadIsEmpty = payloadIsEmpty && !e.AnyMisbehaviourProofs()
+		payloadIsEmpty = payloadIsEmpty && !e.AnyBlockVotes()
+		payloadIsEmpty = payloadIsEmpty && !e.AnyEpochVote()
+	}
+	if e.Version() == 3 {
+		payloadIsEmpty = payloadIsEmpty && !e.AnyCommitteeSignatures()
+		payloadIsEmpty = payloadIsEmpty && !e.AnyBlockSignatures()
+	}
+	if !payloadIsEmpty {
 		w.FixedBytes(e.PayloadHash().Bytes())
 	}
+
 	// extra
 	w.SliceBytes(e.Extra())
 	return nil
@@ -268,6 +279,14 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 	if e.AnyBlockSignatures() != (len(e.blockSignatures) != 0) {
 		return ErrSerMalformedEvent
 	}
+	if e.Version() != 3 {
+		if e.AnyCommitteeSignatures() {
+			return ErrSerMalformedEvent
+		}
+		if e.AnyBlockSignatures() {
+			return ErrSerMalformedEvent
+		}
+	}
 	err := e.Event.MarshalCSER(w)
 	if err != nil {
 		return err
@@ -310,19 +329,17 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 	if e.AnyCommitteeSignatures() {
 		w.U32(uint32(len(e.committeeSignatures)))
 		for _, s := range e.committeeSignatures {
-			// TODO: implement on signature type and add unit tests
-			w.U64(uint64(s.Period))
-			sig := s.Signature.Signature.Serialize()
-			w.FixedBytes(sig[:])
+			if err := s.MarshalCSER(w); err != nil {
+				return err
+			}
 		}
 	}
 	if e.AnyBlockSignatures() {
 		w.U32(uint32(len(e.blockSignatures)))
 		for _, s := range e.blockSignatures {
-			// TODO: implement on signature type and add unit tests
-			w.U64(uint64(s.Number))
-			sig := s.Signature.Signature.Serialize()
-			w.FixedBytes(sig[:])
+			if err := s.MarshalCSER(w); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -402,20 +419,12 @@ func (e *MutableEventPayload) UnmarshalCSER(r *cser.Reader) error {
 	if e.AnyCommitteeSignatures() {
 		num := r.U32()
 		for range num {
-			// TODO: move to signature type and add unit tests
-			period := r.U64()
-			sig := [96]byte{}
-			r.FixedBytes(sig[:])
-			signature, err := bls.DeserializeSignature(sig)
+			var signature CommitteeSignature
+			err := signature.UnmarshalCSER(r)
 			if err != nil {
 				return err
 			}
-			committeeSignatures = append(committeeSignatures, CommitteeSignature{
-				Period: scc.Period(period),
-				Signature: cert.Signature[cert.CommitteeStatement]{
-					Signature: signature,
-				},
-			})
+			committeeSignatures = append(committeeSignatures, signature)
 		}
 	}
 	e.committeeSignatures = committeeSignatures
@@ -425,20 +434,12 @@ func (e *MutableEventPayload) UnmarshalCSER(r *cser.Reader) error {
 	if e.AnyBlockSignatures() {
 		num := r.U32()
 		for range num {
-			// TODO: move to signature type and add unit tests
-			block := r.U64()
-			sig := [96]byte{}
-			r.FixedBytes(sig[:])
-			signature, err := bls.DeserializeSignature(sig)
+			var signature BlockSignature
+			err := signature.UnmarshalCSER(r)
 			if err != nil {
 				return err
 			}
-			blockSignatures = append(blockSignatures, BlockSignature{
-				Number: idx.Block(block),
-				Signature: cert.Signature[cert.BlockStatement]{
-					Signature: signature,
-				},
-			})
+			blockSignatures = append(blockSignatures, signature)
 		}
 	}
 	e.blockSignatures = blockSignatures

@@ -175,7 +175,7 @@ func TestCommittee_JSON_MarshalRoundTrip(t *testing.T) {
 	for _, committee := range tests {
 		data, err := committee.MarshalJSON()
 		require.NoError(t, err)
-		require.Regexp(t, `^{"Member":(\[.*\]|null)}$`, string(data))
+		require.Regexp(t, `^null|\[(\{.*\})*\]$`, string(data))
 
 		var got Committee
 		err = got.UnmarshalJSON(data)

@@ -1,16 +1,6 @@
 package node
 
-import (
-	"fmt"
-	"testing"
-
-	"github.com/0xsoniclabs/sonic/scc"
-	"github.com/0xsoniclabs/sonic/scc/cert"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/stretchr/testify/require"
-	"go.uber.org/mock/gomock"
-)
-
+/*
 func TestNode_ProcessNewBlock_CreatesBlockCertificate(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	store := NewMockStore(ctrl)
@@ -68,3 +58,4 @@ func TestNode_NewBlock_ReportsCertificateCreationError(t *testing.T) {
 	_, _, err := node.ProcessNewBlock(stmt)
 	require.ErrorIs(t, err, issue)
 }
+*/

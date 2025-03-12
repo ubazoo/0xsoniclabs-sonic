@@ -428,7 +428,9 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	em.addTxs(mutEvent, sortedTxs)
 
 	// Add signatures
-	em.addSignatures(mutEvent)
+	if version == 3 {
+		em.addSignatures(mutEvent)
+	}
 
 	// calc Payload hash
 	mutEvent.SetPayloadHash(inter.CalcPayloadHash(mutEvent))
@@ -488,12 +490,18 @@ func (em *Emitter) nameEventForDebug(e *inter.EventPayload) {
 func (em *Emitter) EnqueueCommitteeSignatureForBroadcast(sig inter.CommitteeSignature) {
 	em.signatureMutex.Lock()
 	defer em.signatureMutex.Unlock()
+	if !em.world.GetRules().Upgrades.Allegro {
+		return
+	}
 	em.pendingCommitteeSignatures = append(em.pendingCommitteeSignatures, sig)
 }
 
 func (em *Emitter) EnqueueBlockSignatureForBroadcast(sig inter.BlockSignature) {
 	em.signatureMutex.Lock()
 	defer em.signatureMutex.Unlock()
+	if !em.world.GetRules().Upgrades.Allegro {
+		return
+	}
 	em.pendingBlockSignatures = append(em.pendingBlockSignatures, sig)
 }
 

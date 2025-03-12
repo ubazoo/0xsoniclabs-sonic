@@ -275,15 +275,11 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	svc.tflusher = svc.makePeriodicFlusher()
 
 	// create Sonic Certification Chain node
-	// TODO: track the current committee inside the scc Node instance
-	// (see https://github.com/0xsoniclabs/sonic-admin/issues/22)
-	genesisCommitteeCertificate, err := store.GetCommitteeCertificate(0)
-	if err == nil {
-		svc.sccNode = scc_node.NewNode(store, genesisCommitteeCertificate.Subject().Committee)
-
-		// TODO: implement proper key management
-		key := bls.NewPrivateKeyForTests(0)
-		svc.sccNode.SetKey(&key)
+	node, err := scc_node.NewNode(store)
+	if err != nil {
+		log.Warn("Failed to load certification chain state from store, disabling certification chain feature", "err", err)
+	} else {
+		svc.sccNode = node
 	}
 
 	return svc, nil
@@ -362,6 +358,13 @@ func (s *Service) EmitterWorld(signer valkeystore.SignerI) emitter.World {
 func (s *Service) RegisterEmitter(em *emitter.Emitter) {
 	txtime.Enabled = true // enable tracking of tx times
 	s.emitters = append(s.emitters, em)
+}
+
+func (s *Service) SetCertificationChainSigningKey(key bls.PrivateKey) error {
+	if s.sccNode == nil {
+		return fmt.Errorf("certification chain feature is disabled")
+	}
+	return s.sccNode.SetKey(&key)
 }
 
 // MakeProtocols constructs the P2P protocol definitions for `opera`.

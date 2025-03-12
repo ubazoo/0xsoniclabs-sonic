@@ -8,7 +8,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
@@ -510,18 +509,24 @@ func processSignaturesInEvent(
 	}
 	payload := store.GetEventPayload(e.ID())
 	for _, signature := range payload.CommitteeSignatures() {
-		sccNode.ProcessIncomingCommitteeSignature(
+		err := sccNode.ProcessIncomingCommitteeSignature(
 			e.Creator(),
 			signature.Period,
 			signature.Signature,
 		)
+		if err != nil {
+			log.Warn("Failed to inform certification chain about committee signature", "err", err)
+		}
 	}
 	for _, signature := range payload.BlockSignatures() {
-		sccNode.ProcessIncomingBlockSignature(
+		err := sccNode.ProcessIncomingBlockSignature(
 			e.Creator(),
 			signature.Number,
 			signature.Signature,
 		)
+		if err != nil {
+			log.Warn("Failed to inform certification chain about block signature", "err", err)
+		}
 	}
 }
 
@@ -538,32 +543,31 @@ func updateCertificationChain(
 	}
 
 	// Inform the SCC about the new block
-	blockSignature, committeeSignature, err := sccNode.ProcessNewBlock(stmt)
+	committeeAttestations, blockAttestations, err := sccNode.ProcessNewBlock(stmt)
 	if err != nil {
 		log.Warn("Failed to inform certification chain about new block", "err", err)
 		return
 	}
 
 	// Instruct emitter to distribute committee signature.
-	if committeeSignature != nil {
-		period := scc.GetPeriod(stmt.Number + 1)
+	for _, attestation := range committeeAttestations {
 		for _, emitter := range emitters {
 			emitter.EnqueueCommitteeSignatureForBroadcast(
 				inter.CommitteeSignature{
-					Period:    period,
-					Signature: *committeeSignature,
+					Period:    attestation.Subject.Period,
+					Signature: attestation.Signature,
 				},
 			)
 		}
 	}
 
 	// Instruct emitter to distribute block signature.
-	if blockSignature != nil {
+	for _, attestation := range blockAttestations {
 		for _, emitter := range emitters {
 			emitter.EnqueueBlockSignatureForBroadcast(
 				inter.BlockSignature{
-					Number:    stmt.Number,
-					Signature: *blockSignature,
+					Number:    attestation.Subject.Number,
+					Signature: attestation.Signature,
 				},
 			)
 		}
