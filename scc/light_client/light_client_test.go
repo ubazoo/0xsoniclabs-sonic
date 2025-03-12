@@ -10,8 +10,8 @@ import (
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestLightClient_NewLightClient_ReportsInvalidConfig(t *testing.T) {
