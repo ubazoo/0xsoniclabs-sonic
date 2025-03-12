@@ -440,6 +440,11 @@ func (n *IntegrationTestNet) GetDirectory() string {
 	return n.nodes[0].directory
 }
 
+// GetJsonRpcPort returns the JSON-RPC port of the first node in the network.
+func (n *IntegrationTestNet) GetJsonRpcPort() int {
+	return n.nodes[0].httpPort
+}
+
 // RestartWithExportImport stops the network, exports the genesis file, cleans the
 // temporary directory, imports the genesis file, and starts the network again.
 func (n *IntegrationTestNet) RestartWithExportImport() error {
