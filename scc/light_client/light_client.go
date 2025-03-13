@@ -15,9 +15,9 @@ import (
 // It is responsible for managing the light client state and
 // interacting with the provider.
 type LightClient struct {
-	provider     provider.Provider
-	state        *lcs.State
-	blockQuerier bq.BlockQueryI
+	provider provider.Provider
+	state    *lcs.State
+	querier  bq.BlockQueryI
 }
 
 // Config is used to configure the LightClient.
@@ -46,14 +46,15 @@ func NewLightClient(config Config) (*LightClient, error) {
 		state: lcs.NewState(
 			scc.NewCommittee(
 				slices.Clone(config.Genesis.Members())...)),
-		provider:     p,
-		blockQuerier: b,
+		provider: p,
+		querier:  b,
 	}, nil
 }
 
 // Close closes the light client provider.
 func (c *LightClient) Close() {
 	c.provider.Close()
+	c.querier.Close()
 }
 
 // Sync updates the light client state using certificates from the provider.
@@ -61,4 +62,35 @@ func (c *LightClient) Close() {
 // with the network.
 func (c *LightClient) Sync() (idx.Block, error) {
 	return c.state.Sync(c.provider)
+}
+
+// GetBalance returns the balance of the given address at the given height.
+// It returns an error if it fails to sync, fails to get the address info or
+// the proof state root does not match the current state root.
+func (c *LightClient) GetBalance(address string, height idx.Block) (uint64, error) {
+	proof, err := c.getProof(address, height)
+	return proof.Balance, err
+}
+
+// getProof is a helper function that attempts a sync and then asks the
+// querier for the proof of the given address at the given height.
+// It returns an error if it fails to sync, fails to get the address info or
+// the proof state root does not match the current state root.
+func (c *LightClient) getProof(address string, height idx.Block) (bq.ProofQuery, error) {
+	// always sync before querying
+	_, err := c.Sync()
+	if err != nil {
+		return bq.ProofQuery{}, fmt.Errorf("failed to sync: %w", err)
+	}
+	proof, err := c.querier.GetBlockInfo(address, height)
+	if err != nil {
+		return bq.ProofQuery{}, fmt.Errorf("failed to get address info: %w", err)
+	}
+	// it is safe to ignore the hasSynced flag here because if there was an error
+	// during sync, if would have exited in the first if.
+	rootHash, _ := c.state.StateRoot()
+	if proof.StateRoot != rootHash {
+		return bq.ProofQuery{}, fmt.Errorf("state root mismatch")
+	}
+	return proof, nil
 }
