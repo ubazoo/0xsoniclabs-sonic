@@ -17,9 +17,12 @@ type State struct {
 	headNumber idx.Block
 	headHash   common.Hash
 	headRoot   common.Hash
+	hasSynced  bool
 }
 
 // NewState creates a new State with the given committee.
+// The given committee must be a valid committee and it is expected to be the
+// committee for the genesis period.
 func NewState(committee scc.Committee) *State {
 	return &State{
 		committee: committee,
@@ -27,13 +30,13 @@ func NewState(committee scc.Committee) *State {
 }
 
 // Head returns the block number of the latest known block.
-func (s *State) Head() idx.Block {
-	return s.headNumber
+func (s *State) Head() (idx.Block, bool) {
+	return s.headNumber, s.hasSynced
 }
 
 // StateRoot returns the state root of the latest known block.
-func (s *State) StateRoot() common.Hash {
-	return s.headRoot
+func (s *State) StateRoot() (common.Hash, bool) {
+	return s.headRoot, s.hasSynced
 }
 
 // Sync updates the light client state using certificates from the provider.
@@ -79,6 +82,7 @@ func (s *State) Sync(p provider.Provider) (idx.Block, error) {
 	s.headNumber = headCert.Subject().Number
 	s.headHash = headCert.Subject().Hash
 	s.headRoot = headCert.Subject().StateRoot
+	s.hasSynced = true
 
 	// return the latest block number
 	return s.headNumber, nil

@@ -43,7 +43,17 @@ func TestLightClientState_PropagatesErrorsFrom(t *testing.T) {
 	}
 }
 
-func TestLightClientState_Sync_ChangesNothingWhen_LatestBlockIsEmpty(t *testing.T) {
+func TestLightClientState_Head_StateRoot_ReturnsFalseForUnsyncedState(t *testing.T) {
+	require := require.New(t)
+	state := NewState(scc.Committee{})
+	head, synced := state.Head()
+	require.False(synced)
+	require.Zero(head)
+	root, synced := state.StateRoot()
+	require.False(synced)
+	require.Zero(root)
+}
+
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	prov := provider.NewMockProvider(ctrl)
@@ -91,6 +101,7 @@ func TestLightClientState_Sync_UpdatesOnlyHeadWhen_SyncToCurrentPeriod(t *testin
 		headNumber: blockCert.Subject().Number,
 		headHash:   common.Hash{0x1},
 		headRoot:   common.Hash{0x2},
+		hasSynced:  true,
 	}
 	compareStates(t, &want, state)
 }
@@ -268,6 +279,7 @@ func TestLightClientState_Sync_UpdatesState(t *testing.T) {
 		headNumber: blockNumber,
 		headHash:   common.Hash{0x1},
 		headRoot:   common.Hash{0x2},
+		hasSynced:  true,
 	}
 	compareStates(t, &want, state)
 
