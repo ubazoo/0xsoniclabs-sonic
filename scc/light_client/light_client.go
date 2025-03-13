@@ -6,7 +6,8 @@ import (
 
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc"
-	lc_state "github.com/0xsoniclabs/sonic/scc/light_client/light_client_state"
+	bq "github.com/0xsoniclabs/sonic/scc/light_client/block_query"
+	lcs "github.com/0xsoniclabs/sonic/scc/light_client/light_client_state"
 	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
 )
 
@@ -14,15 +15,17 @@ import (
 // It is responsible for managing the light client state and
 // interacting with the provider.
 type LightClient struct {
-	provider provider.Provider
-	state    *lc_state.State
+	provider     provider.Provider
+	state        *lcs.State
+	blockQuerier bq.BlockQueryI
 }
 
 // Config is used to configure the LightClient.
 // It requires an url for the certificate providers and an initial committee.
 type Config struct {
-	Provider string
-	Genesis  scc.Committee
+	Provider    string
+	Genesis     scc.Committee
+	StateSource string
 }
 
 // NewLightClient creates a new LightClient with the given config.
@@ -35,11 +38,16 @@ func NewLightClient(config Config) (*LightClient, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create provider: %w\n", err)
 	}
+	b, err := bq.NewBlockQuery(config.StateSource)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create block querier: %w\n", err)
+	}
 	return &LightClient{
-		state: lc_state.NewState(
+		state: lcs.NewState(
 			scc.NewCommittee(
 				slices.Clone(config.Genesis.Members())...)),
-		provider: p,
+		provider:     p,
+		blockQuerier: b,
 	}, nil
 }
 
