@@ -2,7 +2,6 @@ package lc_state
 
 import (
 	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/scc"
@@ -25,7 +24,7 @@ func TestLightClientState_PropagatesErrorsFrom(t *testing.T) {
 				Return(nil, fmt.Errorf("failed to get block certificates"))
 		},
 		"GettingCommitteeCertificates": func(prov *provider.MockProvider) {
-			expectBlockForPeriod(prov, 1)
+			expectQueryForBlockOfPeriod(prov, 1)
 			prov.EXPECT().
 				GetCommitteeCertificates(scc.Period(1), uint64(1)).
 				Return(nil, fmt.Errorf("failed to get committee certificates"))
@@ -54,6 +53,7 @@ func TestLightClientState_Head_StateRoot_ReturnsFalseForUnsyncedState(t *testing
 	require.Zero(root)
 }
 
+func TestLightClientState_Sync_ChangesNothingWhen_LatestBlockCanNotBeObtained(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	prov := provider.NewMockProvider(ctrl)
@@ -66,7 +66,7 @@ func TestLightClientState_Head_StateRoot_ReturnsFalseForUnsyncedState(t *testing
 	_, err := state.Sync(prov)
 	require.ErrorContains(err, "zero block certificates")
 	want := State{}
-	compareStates(t, &want, state)
+	require.Equal(&want, state)
 }
 
 func TestLightClientState_Sync_UpdatesOnlyHeadWhen_SyncToCurrentPeriod(t *testing.T) {
@@ -103,7 +103,7 @@ func TestLightClientState_Sync_UpdatesOnlyHeadWhen_SyncToCurrentPeriod(t *testin
 		headRoot:   common.Hash{0x2},
 		hasSynced:  true,
 	}
-	compareStates(t, &want, state)
+	require.Equal(&want, state)
 }
 
 func TestLightClientState_Sync_CanNotSyncToPastPeriod(t *testing.T) {
@@ -112,7 +112,7 @@ func TestLightClientState_Sync_CanNotSyncToPastPeriod(t *testing.T) {
 	prov := provider.NewMockProvider(ctrl)
 
 	// setup block for period 1.
-	expectBlockForPeriod(prov, 1)
+	expectQueryForBlockOfPeriod(prov, 1)
 
 	// setup synced to period 2
 	state := State{period: 2}
@@ -132,10 +132,10 @@ func TestLightClientState_Sync_ReportsFailedVerificationOfLatestBlock(t *testing
 	state.period = 1
 
 	// setup unsigned block for period 1.
-	expectBlockForPeriod(prov, 1)
+	expectQueryForBlockOfPeriod(prov, 1)
 
 	_, err := state.Sync(prov)
-	require.ErrorContains(err, "insufficient voting power")
+	require.ErrorContains(err, "failed to sync to period 1")
 }
 
 func TestLightClientState_Sync_FailsWithNilProvider(t *testing.T) {
@@ -150,7 +150,7 @@ func TestLightClientState_Sync_FailsWhenHeadProvidedIsSmallerThanCurrent(t *test
 	ctrl := gomock.NewController(t)
 	prov := provider.NewMockProvider(ctrl)
 
-	expectBlockForPeriod(prov, 0)
+	expectQueryForBlockOfPeriod(prov, 0)
 
 	state := NewState(scc.NewCommittee())
 	lastBlockOfPeriod := idx.Block(3)
@@ -161,7 +161,7 @@ func TestLightClientState_Sync_FailsWhenHeadProvidedIsSmallerThanCurrent(t *test
 	want := State{
 		headNumber: lastBlockOfPeriod,
 	}
-	compareStates(t, &want, state)
+	require.Equal(&want, state)
 }
 
 func TestLightClientState_Sync_FailsWithUnorderedCommitteeCertificates(t *testing.T) {
@@ -170,7 +170,7 @@ func TestLightClientState_Sync_FailsWithUnorderedCommitteeCertificates(t *testin
 	prov := provider.NewMockProvider(ctrl)
 
 	// setup block.
-	expectBlockForPeriod(prov, 2)
+	expectQueryForBlockOfPeriod(prov, 2)
 
 	// setup committee certificates for period 2.
 	committeeCert2 := cert.NewCertificate(cert.CommitteeStatement{
@@ -193,7 +193,7 @@ func TestLightClientState_Sync_FailsWithInvalidCommitteeCertificate(t *testing.T
 	prov := provider.NewMockProvider(ctrl)
 
 	// setup block
-	expectBlockForPeriod(prov, 1)
+	expectQueryForBlockOfPeriod(prov, 1)
 
 	// setup committee certificates for period 1.
 	committeeCert1 := cert.NewCertificate(cert.CommitteeStatement{
@@ -210,13 +210,13 @@ func TestLightClientState_Sync_FailsWithInvalidCommitteeCertificate(t *testing.T
 	require.ErrorContains(err, "invalid committee")
 }
 
-func TestLightClientState_Sync_ReportsCurrentCommitteeFailsToVerifyNextCommittee(t *testing.T) {
+func TestLightClientState_Sync_ReportsIfCurrentCommitteeFailsToVerifyNextCommittee(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	prov := provider.NewMockProvider(ctrl)
 
 	// setup block for period 1.
-	expectBlockForPeriod(prov, 1)
+	expectQueryForBlockOfPeriod(prov, 1)
 
 	// setup committee certificate for period 1.
 	key := bls.NewPrivateKey()
@@ -281,7 +281,7 @@ func TestLightClientState_Sync_UpdatesState(t *testing.T) {
 		headRoot:   common.Hash{0x2},
 		hasSynced:  true,
 	}
-	compareStates(t, &want, state)
+	require.Equal(&want, state)
 
 }
 
@@ -289,16 +289,7 @@ func TestLightClientState_Sync_UpdatesState(t *testing.T) {
 // Helper functions
 // /////////////////////////
 
-func compareStates(t *testing.T, expected, actual *State) {
-	require := require.New(t)
-	require.Equal(expected.Head(), actual.Head())
-	require.Equal(expected.period, actual.period)
-	require.Equal(expected.headHash, actual.headHash)
-	require.Equal(expected.StateRoot(), actual.StateRoot())
-	require.True(reflect.DeepEqual(expected.committee, actual.committee))
-}
-
-func expectBlockForPeriod(prov *provider.MockProvider, period scc.Period) cert.BlockCertificate {
+func expectQueryForBlockOfPeriod(prov *provider.MockProvider, period scc.Period) {
 	blockNumber := idx.Block(scc.BLOCKS_PER_PERIOD*period + 1)
 	blockCert := cert.NewCertificate(
 		cert.NewBlockStatement(0, blockNumber, common.Hash{}, common.Hash{}))
@@ -306,6 +297,4 @@ func expectBlockForPeriod(prov *provider.MockProvider, period scc.Period) cert.B
 	prov.EXPECT().
 		GetBlockCertificates(provider.LatestBlock, uint64(1)).
 		Return([]cert.BlockCertificate{blockCert}, nil)
-
-	return blockCert
 }

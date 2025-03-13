@@ -52,7 +52,7 @@ func (s *State) Sync(p provider.Provider) (idx.Block, error) {
 	// Get the latest block number from the provider.
 	blockCerts, err := p.GetBlockCertificates(provider.LatestBlock, uint64(1))
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to get block certificates: %w", err)
 	}
 	if len(blockCerts) == 0 {
 		return 0, fmt.Errorf("provider returned zero block certificates")
@@ -70,12 +70,12 @@ func (s *State) Sync(p provider.Provider) (idx.Block, error) {
 	// sync from current period to latest.
 	// this process will update the committee and period of the state.
 	if err := s.syncToPeriod(p, headPeriod); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to sync to period %d: %w", headPeriod, err)
 	}
 
 	// verify latest block certificate with latest committee
 	if err := headCert.Verify(s.committee); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to verify block certificate: %w", err)
 	}
 
 	// update the state with the latest block
