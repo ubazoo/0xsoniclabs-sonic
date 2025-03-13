@@ -7,7 +7,7 @@ package blockquery
 import (
 	reflect "reflect"
 
-	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
+	idx "github.com/0xsoniclabs/consensus/inter/idx"
 	gomock "github.com/golang/mock/gomock"
 )
 
