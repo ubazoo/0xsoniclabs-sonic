@@ -75,7 +75,9 @@ func (s *State) Sync(p provider.Provider) (idx.Block, error) {
 
 	// verify latest block certificate with latest committee
 	if err := headCert.Verify(s.committee); err != nil {
-		return 0, fmt.Errorf("failed to verify block certificate: %w", err)
+		return 0,
+			fmt.Errorf("failed to authenticate block certificate for block %d: %w",
+				headCert.Subject().Number, err)
 	}
 
 	// update the state with the latest block

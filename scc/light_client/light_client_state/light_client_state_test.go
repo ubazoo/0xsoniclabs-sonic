@@ -135,7 +135,7 @@ func TestLightClientState_Sync_ReportsFailedVerificationOfLatestBlock(t *testing
 	expectQueryForBlockOfPeriod(prov, 1)
 
 	_, err := state.Sync(prov)
-	require.ErrorContains(err, "failed to sync to period 1")
+	require.ErrorContains(err, "failed to authenticate block certificate")
 }
 
 func TestLightClientState_Sync_FailsWithNilProvider(t *testing.T) {
