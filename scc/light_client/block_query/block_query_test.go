@@ -63,9 +63,9 @@ func TestBlockQuery_GetBlockInfo_ReturnsProofQuery(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := provider.NewMockRpcClient(ctrl)
 	want := ProofQuery{
-		stateRoot: common.Hash{0x42},
-		balance:   1,
-		nonce:     2,
+		StateRoot: common.Hash{0x42},
+		Balance:   1,
+		Nonce:     2,
 	}
 
 	client.EXPECT().Call(
