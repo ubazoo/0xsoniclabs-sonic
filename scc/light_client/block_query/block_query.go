@@ -37,9 +37,9 @@ type BlockQueryI interface {
 // - balance: The account's balance in Wei.
 // - nonce: The nonce of the related account.
 type ProofQuery struct {
-	stateRoot common.Hash
-	balance   uint64
-	nonce     uint64
+	StateRoot common.Hash
+	Balance   uint64
+	Nonce     uint64
 }
 
 // BlockQuery implements the BlockQueryI interface and provides methods
