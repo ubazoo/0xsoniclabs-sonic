@@ -24,6 +24,9 @@ type BlockQueryI interface {
 	// - ProofQuery: The proof of the state root, balance, and nonce.
 	// - error: An error if the query fails.
 	GetBlockInfo(address string, height idx.Block) (ProofQuery, error)
+
+	// Close closes the BlockQuery.
+	Close()
 }
 
 // ProofQuery represents proof data for an account's state.

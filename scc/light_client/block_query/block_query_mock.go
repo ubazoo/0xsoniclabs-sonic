@@ -34,6 +34,18 @@ func (m *MockBlockQueryI) EXPECT() *MockBlockQueryIMockRecorder {
 	return m.recorder
 }
 
+// Close mocks base method.
+func (m *MockBlockQueryI) Close() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Close")
+}
+
+// Close indicates an expected call of Close.
+func (mr *MockBlockQueryIMockRecorder) Close() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockBlockQueryI)(nil).Close))
+}
+
 // GetBlockInfo mocks base method.
 func (m *MockBlockQueryI) GetBlockInfo(address string, height idx.Block) (ProofQuery, error) {
 	m.ctrl.T.Helper()
