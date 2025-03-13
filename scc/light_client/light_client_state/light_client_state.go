@@ -62,8 +62,12 @@ func (s *State) Sync(p provider.Provider) (idx.Block, error) {
 	headCert := blockCerts[0]
 	headPeriod := scc.GetPeriod(headCert.Subject().Number)
 
-	if headCert.Subject().Number <= s.headNumber {
-		return 0, fmt.Errorf("invalid block number: %d, expected > %d",
+	// if the latest block is not newer than the current head, return the current head
+	if headCert.Subject().Number == s.headNumber {
+		return s.headNumber, nil
+	}
+	if headCert.Subject().Number < s.headNumber {
+		return 0, fmt.Errorf("provider returned old block head %d, expected > %d",
 			headCert.Subject().Number, s.headNumber)
 	}
 

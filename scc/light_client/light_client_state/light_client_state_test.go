@@ -145,7 +145,26 @@ func TestLightClientState_Sync_FailsWithNilProvider(t *testing.T) {
 	require.ErrorContains(err, "cannot update with nil provider")
 }
 
-func TestLightClientState_Sync_FailsWhenHeadProvidedIsSmallerThanCurrent(t *testing.T) {
+func TestLightClientState_Sync_IgnoresSameBlockOrPeriod(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	prov := provider.NewMockProvider(ctrl)
+
+	expectQueryForBlockOfPeriod(prov, 0)
+
+	state := NewState(scc.NewCommittee())
+	lastBlockOfPeriod := idx.Block(1)
+	state.headNumber = lastBlockOfPeriod
+
+	_, err := state.Sync(prov)
+	require.NoError(err)
+	want := State{
+		headNumber: lastBlockOfPeriod,
+	}
+	require.Equal(&want, state)
+}
+
+func TestLightClientState_Sync_FailsWithOlderHead(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	prov := provider.NewMockProvider(ctrl)
@@ -157,7 +176,7 @@ func TestLightClientState_Sync_FailsWhenHeadProvidedIsSmallerThanCurrent(t *test
 	state.headNumber = lastBlockOfPeriod
 
 	_, err := state.Sync(prov)
-	require.ErrorContains(err, "invalid block number")
+	require.ErrorContains(err, "provider returned old block head")
 	want := State{
 		headNumber: lastBlockOfPeriod,
 	}
