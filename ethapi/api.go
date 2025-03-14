@@ -1752,7 +1752,7 @@ func (s *PublicTransactionPoolAPI) GetBlockReceipts(ctx context.Context, blockNr
 		}
 	} else if blockHash, ok := blockNrOrHash.Hash(); ok {
 		header, err = s.b.HeaderByHash(ctx, blockHash)
-		if err != nil {
+		if header == nil || err != nil {
 			return nil, err
 		}
 		number = rpc.BlockNumber(header.Number.Uint64())

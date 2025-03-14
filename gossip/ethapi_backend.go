@@ -86,7 +86,7 @@ func (b *EthAPIBackend) HeaderByNumber(ctx context.Context, number rpc.BlockNumb
 		return nil, err
 	}
 	if blk == nil {
-		return nil, fmt.Errorf("block %v not found", number)
+		return nil, nil
 	}
 	return blk.Header(), err
 }
