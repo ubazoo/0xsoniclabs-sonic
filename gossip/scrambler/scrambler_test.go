@@ -203,42 +203,61 @@ func TestSortPartition_KnownExamples_ProduceExpectedResult(t *testing.T) {
 }
 
 func TestInterleaving_Examples_ProduceExpectedInterleaving(t *testing.T) {
-	test := map[string]struct {
-		partition [][]int
-		result    []int
-	}{
-		"empty": {},
-		"single partition with one element": {
-			[][]int{{0}},
-			[]int{0},
-		},
-		"single partition with multiple elements": {
-			[][]int{{0, 1, 2}},
-			[]int{0, 1, 2},
-		},
-		"two partitions with one element each": {
-			[][]int{{0}, {1}},
-			[]int{0, 1},
-		},
-		"two partitions with multiple elements each": {
-			[][]int{{0, 1, 2}, {3, 4, 5}},
-			[]int{0, 3, 1, 4, 2, 5},
-		},
-		"two partitions with different lengths": {
-			[][]int{{0, 1, 2}, {3}},
-			[]int{0, 3, 1, 2},
-		},
-		"three partitions with different lengths": {
-			[][]int{{0, 1, 2}, {3}, {4, 5}},
-			[]int{0, 3, 4, 1, 5, 2},
-		},
+	test := map[string][][]int{
+		"empty":                             {},
+		"single partition with one element": {{0}},
+		"single partition with multiple elements":    {{0, 1, 2}},
+		"two partitions with one element each":       {{0}, {1}},
+		"two partitions with multiple elements each": {{0, 1, 2}, {3, 4, 5}},
+		"two partitions with different lengths":      {{0, 1, 2}, {3}},
+		"three partitions with different lengths":    {{0, 1, 2}, {3}, {4, 5}},
 	}
 
-	for name, tt := range test {
-		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-			got := interleavePartitions(tt.partition)
-			require.Equal(tt.result, got)
+	impls := []func([][]int) []int{
+		interleavePartitions[int],
+		interleavePartitions1[int],
+		interleavePartitions2[int],
+		interleavePartitions3[int],
+	}
+	for i, impl := range impls {
+		t.Run(fmt.Sprintf("impl-%d", i), func(t *testing.T) {
+			for name, partition := range test {
+				t.Run(name, func(t *testing.T) {
+					require := require.New(t)
+
+					// the test input needs to be copied since the
+					// implementation may modify it
+					input := make([][]int, len(partition))
+					for i := range partition {
+						input[i] = slices.Clone(partition[i])
+					}
+
+					got := impl(input)
+
+					// make sure that the number of elements is preserved
+					total := 0
+					for _, part := range partition {
+						total += len(part)
+					}
+					require.Len(got, total)
+
+					// make sure that all elements of the partitions are present
+					for _, part := range partition {
+						for _, elem := range part {
+							require.Contains(got, elem)
+						}
+					}
+
+					// make sure that the order within the partitions is preserved
+					for _, part := range partition {
+						for i := range len(part) - 1 {
+							a := part[i]
+							b := part[i+1]
+							require.Less(slices.Index(got, a), slices.Index(got, b))
+						}
+					}
+				})
+			}
 		})
 	}
 }

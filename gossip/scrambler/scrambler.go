@@ -1,8 +1,10 @@
 package scrambler
 
 import (
+	"cmp"
 	"iter"
 	"maps"
+	"slices"
 )
 
 // GetExecutionOrder returns the order in which transactions should be processed.
@@ -363,6 +365,10 @@ func pickOptimal(
 // --- Interleaving ---
 
 func interleavePartitions[T any](partition [][]T) []T {
+	return interleavePartitions3(partition)
+}
+
+func interleavePartitions1[T any](partition [][]T) []T {
 
 	// WARNING: This is just a dummy implementation; the real implementation
 	// should use a random source to sample from partitions in a random order.
@@ -386,6 +392,101 @@ func interleavePartitions[T any](partition [][]T) []T {
 				break
 			}
 		}
+	}
+	return res
+}
+
+func interleavePartitions2[T any](partition [][]T) []T {
+
+	// Step 1: Create a list of proxies that represent the partitions.
+	numTransactions := 0
+	// This loop is O(|partition|) = O(|transactions|).
+	for _, part := range partition {
+		numTransactions += len(part)
+	}
+	if numTransactions == 0 {
+		return nil
+	}
+
+	proxies := make([]int, 0, numTransactions)
+	// This loop nest is O(|transactions|).
+	for i, part := range partition {
+		for range len(part) {
+			proxies = append(proxies, i)
+		}
+	}
+
+	// Step2: Shuffle the proxies.
+	// This is an implementation of the Fisher-Yates shuffle algorithm.
+	// See: https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
+	// This loop is O(|transactions|).
+	for i := len(proxies) - 1; i > 0; i-- {
+		j := 0 // TODO: add random source here, picking a number in [0, i) uniformly
+		proxies[i], proxies[j] = proxies[j], proxies[i]
+	}
+
+	// Step 3: Create the result by interleaving the parts of the partition
+	// according to the shuffled proxies.
+	res := make([]T, 0, numTransactions)
+	// This loop is O(|transactions|).
+	for _, proxy := range proxies {
+		res = append(res, partition[proxy][0])
+		partition[proxy] = partition[proxy][1:]
+	}
+	return res
+}
+
+func interleavePartitions3[T any](partition [][]T) []T {
+
+	// This implementation determines the random order of interleaving by
+	// through the following algorithm:
+	//  - given, a random seed R
+	//  - we create the a list [0,...,N-1] where N is the number of transactions
+	//  - we xor each element of the list with R
+	//  - we sort the list
+	//  - we use the sorted list to determine the order of transactions
+	//
+	// See https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle#Sorting
+	// for a discussion of this algorithm.
+
+	// Step 1: Create a list of proxies that represent the partitions.
+	numTransactions := 0
+	// This loop is O(|partition|) = O(|transactions|).
+	for _, part := range partition {
+		numTransactions += len(part)
+	}
+	if numTransactions == 0 {
+		return nil
+	}
+
+	type proxy struct {
+		pos  uint
+		part int
+	}
+	proxies := make([]proxy, 0, numTransactions)
+	seed := uint(0xaaAAaaAAaa) // TODO: add random seed here
+	// This loop nest is O(|transactions|).
+	for i, part := range partition {
+		for range len(part) {
+			pos := uint(len(proxies)) ^ seed
+			proxies = append(proxies, proxy{pos, i})
+		}
+	}
+
+	// Step2: Shuffle the proxies by sorting them according to the seeded position.
+	// This step is O(NlogN) where N is |transactions|.
+	// If we can find a Radix sort implementation, this could be reduced to O(N).
+	slices.SortFunc(proxies, func(a, b proxy) int {
+		return cmp.Compare(a.pos, b.pos)
+	})
+
+	// Step 3: Create the result by interleaving the parts of the partition
+	// according to the shuffled proxies.
+	res := make([]T, 0, numTransactions)
+	// This loop is O(|transactions|).
+	for _, proxy := range proxies {
+		res = append(res, partition[proxy.part][0])
+		partition[proxy.part] = partition[proxy.part][1:]
 	}
 	return res
 }
