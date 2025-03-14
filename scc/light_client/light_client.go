@@ -72,6 +72,11 @@ func (c *LightClient) GetBalance(address string, height idx.Block) (uint64, erro
 	return proof.Balance, err
 }
 
+func (c *LightClient) GetNonce(address string, height idx.Block) (uint64, error) {
+	proof, err := c.getProof(address, height)
+	return proof.Nonce, err
+}
+
 // getProof is a helper function that attempts a sync and then asks the
 // querier for the proof of the given address at the given height.
 // It returns an error if it fails to sync, fails to get the address info or

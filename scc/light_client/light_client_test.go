@@ -243,6 +243,31 @@ func TestLightClient_GetBalance_ReturnsBalance(t *testing.T) {
 	require.Equal(uint64(42), balance)
 }
 
+func TestLightClient_GetNonce_ReportsNonce(t *testing.T) {
+	require := require.New(t)
+	ctrl := gomock.NewController(t)
+	prov := provider.NewMockProvider(ctrl)
+	querier := bq.NewMockBlockQueryI(ctrl)
+
+	// Setup test data
+	key := bls.NewPrivateKey()
+	blockCert, _ := setupBlockCertificate(t, key)
+	committeeCert := setupCommitteeCertificate(t, key)
+
+	// Create and configure LightClient
+	client, err := setupLightClient(prov, key)
+	require.NoError(err)
+	client.querier = querier
+
+	// reports mismatching state root
+	mockProviderResponses(prov, blockCert, committeeCert)
+	querier.EXPECT().GetBlockInfo("0x0", idx.Block(1)).
+		Return(bq.ProofQuery{StateRoot: common.Hash{0x02}, Nonce: 42}, nil)
+	nonce, err := client.GetNonce("0x0", 1)
+	require.NoError(err)
+	require.Equal(uint64(42), nonce)
+}
+
 /////////////////////////////////////////////////////
 // Helper functions for testing
 /////////////////////////////////////////////////////
