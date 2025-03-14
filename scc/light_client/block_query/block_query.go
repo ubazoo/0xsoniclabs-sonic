@@ -6,7 +6,9 @@ import (
 	"github.com/0xsoniclabs/consensus/inter/idx"
 	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/holiman/uint256"
 )
 
 //go:generate mockgen -source=block_query.go -package=blockquery -destination=block_query_mock.go
@@ -23,7 +25,7 @@ type BlockQueryI interface {
 	// Returns:
 	// - ProofQuery: The proof of the state root, balance, and nonce.
 	// - error: An error if the query fails.
-	GetBlockInfo(address string, height idx.Block) (ProofQuery, error)
+	GetBlockInfo(address common.Address, height idx.Block) (ProofQuery, error)
 
 	// Close closes the BlockQuery.
 	Close()
@@ -37,9 +39,9 @@ type BlockQueryI interface {
 // - balance: The account's balance in Wei.
 // - nonce: The nonce of the related account.
 type ProofQuery struct {
-	StateRoot common.Hash
-	Balance   uint64
-	Nonce     uint64
+	StorageHash common.Hash
+	Balance     *uint256.Int
+	Nonce       hexutil.Uint64
 }
 
 // BlockQuery implements the BlockQueryI interface and provides methods
@@ -88,7 +90,7 @@ func (b *BlockQuery) Close() {
 // Returns:
 // - ProofQuery: The proof of the state root, balance, and nonce.
 // - error: An error if the query fails.
-func (b *BlockQuery) GetBlockInfo(address string, height idx.Block) (ProofQuery, error) {
+func (b *BlockQuery) GetBlockInfo(address common.Address, height idx.Block) (ProofQuery, error) {
 	result := ProofQuery{}
 	heightString := fmt.Sprintf("0x%x", height)
 	if height == provider.LatestBlock {
