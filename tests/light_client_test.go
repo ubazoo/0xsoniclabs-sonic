@@ -120,7 +120,7 @@ func TestServer_CanRequestMaxNumberOfResults(t *testing.T) {
 	}
 }
 
-func TestBlockQuery_GetBlockInfo_CanRetrieveBlockInfo(t *testing.T) {
+func TestBlockQuery_GetAddressInfo_CanRetrieveBlockInfo(t *testing.T) {
 	require := require.New(t)
 
 	// start network
@@ -137,7 +137,7 @@ func TestBlockQuery_GetBlockInfo_CanRetrieveBlockInfo(t *testing.T) {
 	t.Cleanup(blockQuery.Close)
 
 	// get block info
-	blockInfo, err := blockQuery.GetBlockInfo(account, provider.LatestBlock)
+	blockInfo, err := blockQuery.GetAddressInfo(account, provider.LatestBlock)
 	require.NoError(err)
 	require.Equal(blockInfo.Balance, want)
 }

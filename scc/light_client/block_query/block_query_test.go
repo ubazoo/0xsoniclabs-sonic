@@ -39,7 +39,7 @@ func TestBlockQuery_Closed_ClosesClient(t *testing.T) {
 	require.Nil(blockQuery.client)
 }
 
-func TestBlockQuery_GetBlockInfo_PropagatesClientError(t *testing.T) {
+func TestBlockQuery_GetAddressInfo_PropagatesClientError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := provider.NewMockRpcClient(ctrl)
@@ -56,11 +56,11 @@ func TestBlockQuery_GetBlockInfo_PropagatesClientError(t *testing.T) {
 	blockQuery, err := NewBlockQuery("http://localhost:8545")
 	require.NoError(err)
 	blockQuery.client = client
-	_, err = blockQuery.GetBlockInfo(addr, math.MaxUint64)
+	_, err = blockQuery.GetAddressInfo(addr, math.MaxUint64)
 	require.ErrorIs(err, someError)
 }
 
-func TestBlockQuery_GetBlockInfo_ReturnsProofQuery(t *testing.T) {
+func TestBlockQuery_GetAddressInfo_ReturnsProofQuery(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
 	client := provider.NewMockRpcClient(ctrl)
@@ -85,7 +85,7 @@ func TestBlockQuery_GetBlockInfo_ReturnsProofQuery(t *testing.T) {
 	blockQuery, err := NewBlockQuery("http://localhost:8545")
 	require.NoError(err)
 	blockQuery.client = client
-	got, err := blockQuery.GetBlockInfo(addr, math.MaxUint64)
+	got, err := blockQuery.GetAddressInfo(addr, math.MaxUint64)
 	require.NoError(err)
 	require.NotNil(got)
 	require.Equal(want, got)
