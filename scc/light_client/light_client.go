@@ -79,6 +79,9 @@ func (c *LightClient) GetBalance(address common.Address, height idx.Block) (uint
 	return proof.Balance.Uint64(), err
 }
 
+// GetNonce returns the nonce of the given address at the given height.
+// It returns an error if it fails to sync, fails to get the address info or
+// the proof state root does not match the current state root.
 func (c *LightClient) GetNonce(address common.Address, height idx.Block) (uint64, error) {
 	proof, err := c.getProof(address, height)
 	if err != nil {
@@ -102,7 +105,7 @@ func (c *LightClient) getProof(address common.Address, height idx.Block) (bq.Pro
 		return bq.ProofQuery{}, fmt.Errorf("failed to get address info: %w", err)
 	}
 	// it is safe to ignore the hasSynced flag here because if there was an error
-	// during sync, if would have exited in the first if.
+	// during sync, it would have triggered an early return.
 	rootHash, _ := c.state.StateRoot()
 	if proof.StorageHash != rootHash {
 		return bq.ProofQuery{}, fmt.Errorf("state root mismatch")
