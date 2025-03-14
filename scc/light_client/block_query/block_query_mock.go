@@ -47,17 +47,17 @@ func (mr *MockBlockQueryIMockRecorder) Close() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Close", reflect.TypeOf((*MockBlockQueryI)(nil).Close))
 }
 
-// GetBlockInfo mocks base method.
-func (m *MockBlockQueryI) GetBlockInfo(address common.Address, height idx.Block) (ProofQuery, error) {
+// GetAddressInfo mocks base method.
+func (m *MockBlockQueryI) GetAddressInfo(address common.Address, height idx.Block) (ProofQuery, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetBlockInfo", address, height)
+	ret := m.ctrl.Call(m, "GetAddressInfo", address, height)
 	ret0, _ := ret[0].(ProofQuery)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetBlockInfo indicates an expected call of GetBlockInfo.
-func (mr *MockBlockQueryIMockRecorder) GetBlockInfo(address, height interface{}) *gomock.Call {
+// GetAddressInfo indicates an expected call of GetAddressInfo.
+func (mr *MockBlockQueryIMockRecorder) GetAddressInfo(address, height interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlockInfo", reflect.TypeOf((*MockBlockQueryI)(nil).GetBlockInfo), address, height)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAddressInfo", reflect.TypeOf((*MockBlockQueryI)(nil).GetAddressInfo), address, height)
 }

@@ -15,7 +15,7 @@ import (
 
 // BlockQueryI defines the interface for querying block information.
 type BlockQueryI interface {
-	// GetBlockInfo returns the state root hash, balance and nonce of the
+	// GetAddressInfo returns the state root hash, balance and nonce of the
 	// given address at the given height.
 	//
 	// Parameters:
@@ -25,7 +25,7 @@ type BlockQueryI interface {
 	// Returns:
 	// - ProofQuery: The proof of the state root, balance, and nonce.
 	// - error: An error if the query fails.
-	GetBlockInfo(address common.Address, height idx.Block) (ProofQuery, error)
+	GetAddressInfo(address common.Address, height idx.Block) (ProofQuery, error)
 
 	// Close closes the BlockQuery.
 	Close()
@@ -80,7 +80,7 @@ func (b *BlockQuery) Close() {
 	b.client = nil
 }
 
-// GetBlockInfo returns the balance and nonce of the given address at the
+// GetAddressInfo returns the balance and nonce of the given address at the
 // given height, with a proof of the state root.
 //
 // Parameters:
@@ -90,7 +90,7 @@ func (b *BlockQuery) Close() {
 // Returns:
 // - ProofQuery: The proof of the state root, balance, and nonce.
 // - error: An error if the query fails.
-func (b *BlockQuery) GetBlockInfo(address common.Address, height idx.Block) (ProofQuery, error) {
+func (b *BlockQuery) GetAddressInfo(address common.Address, height idx.Block) (ProofQuery, error) {
 	result := ProofQuery{}
 	heightString := fmt.Sprintf("0x%x", height)
 	if height == provider.LatestBlock {
