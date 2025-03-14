@@ -8,6 +8,7 @@ import (
 	reflect "reflect"
 
 	idx "github.com/0xsoniclabs/consensus/inter/idx"
+	common "github.com/ethereum/go-ethereum/common"
 	gomock "github.com/golang/mock/gomock"
 )
 
@@ -47,7 +48,7 @@ func (mr *MockBlockQueryIMockRecorder) Close() *gomock.Call {
 }
 
 // GetBlockInfo mocks base method.
-func (m *MockBlockQueryI) GetBlockInfo(address string, height idx.Block) (ProofQuery, error) {
+func (m *MockBlockQueryI) GetBlockInfo(address common.Address, height idx.Block) (ProofQuery, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetBlockInfo", address, height)
 	ret0, _ := ret[0].(ProofQuery)

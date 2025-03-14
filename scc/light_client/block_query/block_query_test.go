@@ -8,6 +8,7 @@ import (
 	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/golang/mock/gomock"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -43,10 +44,11 @@ func TestBlockQuery_GetBlockInfo_PropagatesClientError(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := provider.NewMockRpcClient(ctrl)
 	someError := fmt.Errorf("some error")
+	addr := common.Address{0x1}
 	client.EXPECT().Call(
 		gomock.Any(), // any result variable
 		"eth_getProof",
-		"0x1",
+		fmt.Sprintf("%v", addr),
 		gomock.Any(), // any storage key
 		"latest").
 		Return(someError)
@@ -54,7 +56,7 @@ func TestBlockQuery_GetBlockInfo_PropagatesClientError(t *testing.T) {
 	blockQuery, err := NewBlockQuery("http://localhost:8545")
 	require.NoError(err)
 	blockQuery.client = client
-	_, err = blockQuery.GetBlockInfo("0x1", math.MaxUint64)
+	_, err = blockQuery.GetBlockInfo(addr, math.MaxUint64)
 	require.ErrorIs(err, someError)
 }
 
@@ -63,15 +65,15 @@ func TestBlockQuery_GetBlockInfo_ReturnsProofQuery(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	client := provider.NewMockRpcClient(ctrl)
 	want := ProofQuery{
-		StateRoot: common.Hash{0x42},
-		Balance:   1,
-		Nonce:     2,
+		StorageHash: common.Hash{0x42},
+		Balance:     uint256.NewInt(1),
+		Nonce:       2,
 	}
-
+	addr := common.Address{0x1}
 	client.EXPECT().Call(
 		gomock.Any(),
 		"eth_getProof",
-		"0x1",
+		fmt.Sprintf("%v", addr),
 		gomock.Any(), // any storage key
 		"latest").
 		DoAndReturn(
@@ -83,7 +85,7 @@ func TestBlockQuery_GetBlockInfo_ReturnsProofQuery(t *testing.T) {
 	blockQuery, err := NewBlockQuery("http://localhost:8545")
 	require.NoError(err)
 	blockQuery.client = client
-	got, err := blockQuery.GetBlockInfo("0x1", math.MaxUint64)
+	got, err := blockQuery.GetBlockInfo(addr, math.MaxUint64)
 	require.NoError(err)
 	require.NotNil(got)
 	require.Equal(want, got)
