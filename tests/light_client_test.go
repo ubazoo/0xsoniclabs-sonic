@@ -177,8 +177,9 @@ func TestLightClient_CanSyncToIntegrationNetwork(t *testing.T) {
 
 	// create light client
 	config := light_client.Config{
-		Provider: url,
-		Genesis:  genesis,
+		Provider:    url,
+		Genesis:     genesis,
+		StateSource: url,
 	}
 	lightClient, err := light_client.NewLightClient(config)
 	require.NoError(err)

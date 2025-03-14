@@ -12,6 +12,7 @@ import (
 	"github.com/0xsoniclabs/sonic/scc/light_client/provider"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/golang/mock/gomock"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -173,97 +174,84 @@ func TestLightClient_GetBalance_ReportsErrorOnSyncFailure(t *testing.T) {
 	c.provider = prov
 
 	prov.EXPECT().GetBlockCertificates(provider.LatestBlock, uint64(1)).
-		Return(nil, nil)
+		Return(nil, fmt.Errorf("failed to sync"))
 
-	_, err = c.GetBalance("0x0", 1)
+	_, err = c.GetBalance(common.Address{0x01}, 1)
 	require.ErrorContains(err, "failed to sync")
 }
 
 func TestLightClient_GetBalance_ReportsErrors(t *testing.T) {
 	require := require.New(t)
-
-	// Setup test data
-	key := bls.NewPrivateKey()
-	blockCert, _ := setupBlockCertificate(t, key)
-	committeeCert := setupCommitteeCertificate(t, key)
-
-	// Create and configure LightClient
-	getFreshClient := func(t *testing.T) (*LightClient, *bq.MockBlockQueryI) {
-		ctrl := gomock.NewController(t)
-		prov := provider.NewMockProvider(ctrl)
-		querier := bq.NewMockBlockQueryI(ctrl)
-		client, err := setupLightClient(prov, key)
-		require.NoError(err)
-		client.querier = querier
-		mockProviderResponses(prov, blockCert, committeeCert)
-		return client, querier
-	}
+	address := common.Address{0x01}
 
 	// reports error from querier
 	t.Run("querierError", func(t *testing.T) {
-		client, querier := getFreshClient(t)
-		querier.EXPECT().GetBlockInfo("0x0", idx.Block(1)).
+		client, querier := setupForTestSync(t)
+		querier.EXPECT().GetAddressInfo(address, idx.Block(1)).
 			Return(bq.ProofQuery{}, fmt.Errorf("some error"))
-		_, err := client.GetBalance("0x0", 1)
+		_, err := client.GetBalance(address, 1)
 		require.ErrorContains(err, "failed to get address info")
 	})
 
 	// reports mismatching state root
 	t.Run("stateRootMismatch", func(t *testing.T) {
-		client, querier := getFreshClient(t)
-		querier.EXPECT().GetBlockInfo("0x0", idx.Block(1)).
-			Return(bq.ProofQuery{StateRoot: common.Hash{0x1}, Balance: 0}, nil)
-		_, err := client.GetBalance("0x0", 1)
+		client, querier := setupForTestSync(t)
+		querier.EXPECT().GetAddressInfo(address, idx.Block(1)).
+			Return(bq.ProofQuery{
+				StorageHash: common.Hash{0x1},
+				Balance:     uint256.NewInt(0),
+			}, nil)
+		_, err := client.GetBalance(address, 1)
 		require.ErrorContains(err, "state root mismatch")
 	})
 }
 
+func TestLightClient_GetBalance_ReturnsZeroWithNilBalance(t *testing.T) {
+	require := require.New(t)
+	client, querier := setupForTestSync(t)
+
+	querier.EXPECT().GetAddressInfo(common.Address{0x01}, idx.Block(1)).
+		Return(bq.ProofQuery{StorageHash: common.Hash{0x02}}, nil)
+
+	balance, err := client.GetBalance(common.Address{0x01}, 1)
+	require.NoError(err)
+	require.Equal(uint64(0), balance)
+}
+
 func TestLightClient_GetBalance_ReturnsBalance(t *testing.T) {
 	require := require.New(t)
-	ctrl := gomock.NewController(t)
-	prov := provider.NewMockProvider(ctrl)
-	querier := bq.NewMockBlockQueryI(ctrl)
+	client, querier := setupForTestSync(t)
 
-	// Setup test data
-	key := bls.NewPrivateKey()
-	blockCert, _ := setupBlockCertificate(t, key)
-	committeeCert := setupCommitteeCertificate(t, key)
+	querier.EXPECT().GetAddressInfo(common.Address{0x01}, idx.Block(1)).
+		Return(bq.ProofQuery{
+			StorageHash: common.Hash{0x02},
+			Balance:     uint256.NewInt(42),
+		}, nil)
 
-	// Create and configure LightClient
-	client, err := setupLightClient(prov, key)
-	require.NoError(err)
-	client.querier = querier
-
-	// reports mismatching state root
-	mockProviderResponses(prov, blockCert, committeeCert)
-	querier.EXPECT().GetBlockInfo("0x0", idx.Block(1)).
-		Return(bq.ProofQuery{StateRoot: common.Hash{0x02}, Balance: 42}, nil)
-	balance, err := client.GetBalance("0x0", 1)
+	balance, err := client.GetBalance(common.Address{0x01}, 1)
 	require.NoError(err)
 	require.Equal(uint64(42), balance)
 }
 
+func TestLightClient_GetNonce_ReportsErrorOnFailure(t *testing.T) {
+	require := require.New(t)
+	client, querier := setupForTestSync(t)
+
+	querier.EXPECT().GetAddressInfo(common.Address{0x01}, idx.Block(1)).
+		Return(bq.ProofQuery{}, fmt.Errorf("some error"))
+
+	_, err := client.GetNonce(common.Address{0x01}, 1)
+	require.ErrorContains(err, "failed to get nonce")
+}
+
 func TestLightClient_GetNonce_ReportsNonce(t *testing.T) {
 	require := require.New(t)
-	ctrl := gomock.NewController(t)
-	prov := provider.NewMockProvider(ctrl)
-	querier := bq.NewMockBlockQueryI(ctrl)
+	client, querier := setupForTestSync(t)
 
-	// Setup test data
-	key := bls.NewPrivateKey()
-	blockCert, _ := setupBlockCertificate(t, key)
-	committeeCert := setupCommitteeCertificate(t, key)
+	querier.EXPECT().GetAddressInfo(common.Address{0x01}, idx.Block(1)).
+		Return(bq.ProofQuery{StorageHash: common.Hash{0x02}, Nonce: 42}, nil)
 
-	// Create and configure LightClient
-	client, err := setupLightClient(prov, key)
-	require.NoError(err)
-	client.querier = querier
-
-	// reports mismatching state root
-	mockProviderResponses(prov, blockCert, committeeCert)
-	querier.EXPECT().GetBlockInfo("0x0", idx.Block(1)).
-		Return(bq.ProofQuery{StateRoot: common.Hash{0x02}, Nonce: 42}, nil)
-	nonce, err := client.GetNonce("0x0", 1)
+	nonce, err := client.GetNonce(common.Address{0x01}, 1)
 	require.NoError(err)
 	require.Equal(uint64(42), nonce)
 }
@@ -341,4 +329,20 @@ func setupLightClient(prov *provider.MockProvider, key bls.PrivateKey) (*LightCl
 
 	client.provider = prov
 	return client, nil
+}
+
+func setupForTestSync(
+	t *testing.T,
+) (*LightClient, *bq.MockBlockQueryI) {
+	ctrl := gomock.NewController(t)
+	prov := provider.NewMockProvider(ctrl)
+	querier := bq.NewMockBlockQueryI(ctrl)
+	key := bls.NewPrivateKey()
+	blockCert, _ := setupBlockCertificate(t, key)
+	committeeCert := setupCommitteeCertificate(t, key)
+	client, err := setupLightClient(prov, key)
+	require.NoError(t, err)
+	client.querier = querier
+	mockProviderResponses(prov, blockCert, committeeCert)
+	return client, querier
 }
