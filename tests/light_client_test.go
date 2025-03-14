@@ -128,7 +128,8 @@ func TestBlockQuery_GetBlockInfo_CanRetrieveBlockInfo(t *testing.T) {
 	url := fmt.Sprintf("http://localhost:%d", net.GetJsonRpcPort())
 	account := common.Address{0x42}
 	want := uint256.NewInt(1000)
-	net.EndowAccount(account, want.ToBig())
+	_, err := net.EndowAccount(account, want.ToBig())
+	require.NoError(err)
 
 	// make block query
 	blockQuery, err := bq.NewBlockQuery(url)
