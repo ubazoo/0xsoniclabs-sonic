@@ -1,6 +1,7 @@
 package scrambler
 
 import (
+	"iter"
 	"maps"
 )
 
@@ -52,6 +53,10 @@ type action struct {
 // execution order end up in different lists. Transactions with
 // inter-dependencies end up in the same sub-list.
 func partition(transactions []transaction) [][]transaction {
+	return partition2(transactions)
+}
+
+func partition1(transactions []transaction) [][]transaction {
 
 	// WARNING: This is a proof-of-concept that is not necessarily efficient.
 	// It is a simple implementation that is not optimized to minimize the
@@ -127,6 +132,104 @@ func dependsOn(a, b transaction) bool {
 		}
 	}
 	return false
+}
+
+type unit struct{}
+
+func partition2(transactions []transaction) [][]transaction {
+
+	// Partitions the given list of transactions into groups of
+	// interdependent transactions. Transactions within different groups can be
+	// processed in an arbitrary order, while transactions within the same group
+	// have interdependencies that need to be sorted.
+
+	type sender = int
+	type tx = int
+	type component = int
+
+	// Step 1: create a sender -> transaction index mapping.
+	// This step is O(|actions|).
+	senderToTx := map[sender][]tx{}
+	for i, tx := range transactions {
+		for _, a := range tx.actions() {
+			senderToTx[a.sender] = append(senderToTx[a.sender], i)
+		}
+	}
+
+	// Step 2: create a graph G = (N, E) where
+	// - N is the set of sender addresses
+	// - E = { {a, b} | a, b in N, a != b, there is a transaction touching a and b }
+	// For this we have
+	// - |N| <= |actions|
+	// - |E| <= |actions|
+	graph := map[sender]map[sender]unit{}
+	// This loop is O(|senderToTx|) = O(|actions|).
+	for s := range senderToTx {
+		graph[s] = map[sender]unit{}
+	}
+	// This loop is O(|actions|).
+	for _, tx := range transactions {
+		// By connecting the senders of the actions in the transaction, in a
+		// chain-like fashion, we indicate that all of these senders are
+		// required to be part of the same connected component. A simple chain
+		// is sufficient for computing components, we do not need a fully
+		// connected graph.
+		actions := tx.actions()
+		for i := range len(actions) - 1 {
+			a := actions[i]
+			b := actions[i+1]
+			if a.sender == b.sender {
+				continue
+			}
+			graph[a.sender][b.sender] = unit{}
+			graph[b.sender][a.sender] = unit{}
+		}
+	}
+
+	// Step 3: find connected components in the graph.
+	// This step is O(|E|) = O(|actions|).
+	components := map[sender]component{}
+	numComponents := 0
+	for sender := range graph {
+		if _, found := components[sender]; found {
+			continue
+		}
+		component := numComponents
+		numComponents++
+		for element := range getConnectedNodes(graph, sender) {
+			components[element] = component
+		}
+	}
+
+	// Step 4: group transactions by connected components.
+	// This step is O(|transactions|).
+	res := make([][]transaction, numComponents)
+	for _, tx := range transactions {
+		component := components[tx.main.sender]
+		res[component] = append(res[component], tx)
+	}
+
+	return res
+}
+
+func getConnectedNodes[N comparable](graph map[N]map[N]unit, seed N) iter.Seq[N] {
+	return func(yield func(N) bool) {
+		seen := map[N]unit{}
+		workList := []N{seed}
+		for len(workList) > 0 {
+			node := workList[0]
+			workList = workList[1:]
+			if !yield(node) {
+				return
+			}
+			seen[node] = unit{}
+			for neighbor := range graph[node] {
+				if _, seen := seen[neighbor]; !seen {
+					workList = append(workList, neighbor)
+				}
+			}
+		}
+	}
 }
 
 // --- Sorting ---

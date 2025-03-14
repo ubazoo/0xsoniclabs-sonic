@@ -1,6 +1,7 @@
 package scrambler
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
 	"sort"
@@ -58,27 +59,36 @@ func TestPartition_Examples_ProduceExpectedPartition(t *testing.T) {
 		},
 	}
 
-	for name, tt := range tests {
-		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-			got := partition(tt.transactions)
-			//require.Equal(len(tt.partitions), len(got))
+	impls := []func([]transaction) [][]transaction{
+		partition,
+		partition1,
+		partition2,
+	}
+	for i, impl := range impls {
+		t.Run(fmt.Sprintf("impl-%d", i), func(t *testing.T) {
+			for name, tt := range tests {
+				t.Run(name, func(t *testing.T) {
+					require := require.New(t)
+					got := impl(tt.transactions)
+					//require.Equal(len(tt.partitions), len(got))
 
-			// convert the partition into indices to make comparison easier
-			res := [][]int{}
-			for _, transactions := range got {
-				res = append(res, toIndices(t, tt.transactions, transactions))
-			}
+					// convert the partition into indices to make comparison easier
+					res := [][]int{}
+					for _, transactions := range got {
+						res = append(res, toIndices(t, tt.transactions, transactions))
+					}
 
-			// the result can be in an arbitrary order, so we need to sort the
-			// partitions before comparing
-			for i := range res {
-				slices.Sort(res[i])
+					// the result can be in an arbitrary order, so we need to sort the
+					// partitions before comparing
+					for i := range res {
+						slices.Sort(res[i])
+					}
+					sort.Slice(res, func(i, j int) bool {
+						return less(res[i], res[j])
+					})
+					require.Equal(tt.partitions, res)
+				})
 			}
-			sort.Slice(res, func(i, j int) bool {
-				return less(res[i], res[j])
-			})
-			require.Equal(tt.partitions, res)
 		})
 	}
 }
@@ -254,6 +264,45 @@ func less(a, b []int) bool {
 		}
 	}
 	return len(a) != len(b)
+}
+
+func BenchmarkPartitioning_Chains(b *testing.B) {
+	for _, n := range []int{1, 10, 100, 1_000, 10_000, 100_000} {
+		b.Run(fmt.Sprintf("N=%d", n), func(b *testing.B) {
+			transactions := make([]transaction, n)
+			transactions[0] = tx(a(0, 0))
+			for i := 1; i < n; i++ {
+				transactions[i] = tx(a(i-1, 1), a(i, 0))
+			}
+			b.ResetTimer()
+			for range b.N {
+				partition := partition(transactions)
+				if len(partition) != 1 {
+					b.Fatal("unexpected partition count")
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkPartitioning_ExtensiveAuthorizations(b *testing.B) {
+	for _, n := range []int{1, 10, 100, 1_000, 10_000, 100_000} {
+		b.Run(fmt.Sprintf("N=%d", n), func(b *testing.B) {
+			transactions := make([]transaction, 1)
+			authorizations := make([]action, n)
+			for i := 0; i < n; i++ {
+				authorizations[i] = a(i, 0)
+			}
+			transactions[0] = tx(a(0, 0), authorizations...)
+			b.ResetTimer()
+			for range b.N {
+				partition := partition(transactions)
+				if len(partition) != 1 {
+					b.Fatal("unexpected partition count")
+				}
+			}
+		})
+	}
 }
 
 func FuzzGetExecutionOrder_ProducesAFullyExecutableTransactionOrder(f *testing.F) {
