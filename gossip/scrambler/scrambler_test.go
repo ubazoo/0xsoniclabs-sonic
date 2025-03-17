@@ -2,6 +2,7 @@ package scrambler
 
 import (
 	"fmt"
+	"iter"
 	"reflect"
 	"slices"
 	"sort"
@@ -185,6 +186,13 @@ func TestSortPartition_KnownExamples_ProduceExpectedResult(t *testing.T) {
 			},
 			[]int{0},
 		},
+		"maximizes authorizations": {
+			[]transaction{
+				tx(a(10, 1)),
+				tx(a(10, 1), a(12, 1)),
+			},
+			[]int{1},
+		},
 	}
 
 	for name, tt := range tests {
@@ -324,20 +332,40 @@ func BenchmarkPartitioning_ExtensiveAuthorizations(b *testing.B) {
 	}
 }
 
+func FuzzGetExecutionOrder_OptimalHeuristicProducesOptimalOrder(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		transactions := parseTransactions(data)
+		sorted := GetExecutionOrder(transactions, pickOptimal)
+
+		state := getPresumedInitialState(transactions)
+		obtainedScore := eval(state, sorted)
+
+		bestScore := score{}
+		bestOrder := []transaction{}
+		for permutation := range permute(transactions) {
+			cur := eval(state, permutation)
+			if cur.isBetterThan(bestScore) {
+				bestScore = cur
+				bestOrder = slices.Clone(permutation)
+			}
+		}
+
+		if obtainedScore != bestScore {
+			t.Log("transactions:", transactions)
+			t.Log("sorted:", sorted)
+			t.Log("optimal:", bestOrder)
+			t.Fatalf("obtained %v, expected %v", obtainedScore, bestScore)
+		}
+	})
+}
+
 func FuzzGetExecutionOrder_ProducesAFullyExecutableTransactionOrder(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		transactions := parseTransactions(data)
 		sorted := GetExecutionOrder(transactions)
 
 		// Compute the initial state of nonces indicated by the transactions.
-		state := state{}
-		for _, tx := range transactions {
-			for _, a := range tx.actions() {
-				if nonce, found := state[a.sender]; !found || a.nonce < nonce {
-					state[a.sender] = a.nonce
-				}
-			}
-		}
+		state := getPresumedInitialState(transactions)
 
 		// Check that all transactions can be executed in the given order.
 		for _, tx := range sorted {
@@ -413,5 +441,74 @@ func parseTransactions(data []byte) []transaction {
 		}
 
 		res = append(res, cur)
+	}
+}
+
+func TestPermute_ProducesAllPermutations(t *testing.T) {
+	for numEntries := range 5 {
+		t.Run(fmt.Sprintf("N=%d", numEntries), func(t *testing.T) {
+			require := require.New(t)
+
+			elements := make([]int, numEntries)
+			for i := range elements {
+				elements[i] = i
+			}
+
+			// Compute all permutations.
+			permutations := slices.Collect(permute(elements))
+
+			// Check that the number of permutations is correct.
+			want := 1
+			for i := 1; i <= numEntries; i++ {
+				want *= i
+			}
+			require.Equal(want, len(permutations))
+
+			// check that all permutations contain the same elements
+			for _, permutation := range permutations {
+				require.ElementsMatch(elements, permutation)
+			}
+
+			// Check that all permutations are unique.
+			unique := map[string]bool{}
+			for _, permutation := range permutations {
+				key := fmt.Sprint(permutation)
+				_, found := unique[key]
+				require.False(found, "duplicate permutation: %v", permutation)
+				unique[key] = true
+			}
+		})
+	}
+}
+
+func permute[T any](elements []T) iter.Seq[[]T] {
+	// An implementation of the Heap's algorithm to generate all permutations of
+	// the given elements.
+	// See https://en.wikipedia.org/wiki/Heap%27s_algorithm
+	return func(yield func([]T) bool) {
+		if !yield(slices.Clone(elements)) {
+			return
+		}
+
+		list := slices.Clone(elements)
+		c := make([]int, len(list))
+		i := 1
+		for i < len(list) {
+			if c[i] < i {
+				if i%2 == 0 {
+					list[0], list[i] = list[i], list[0]
+				} else {
+					list[c[i]], list[i] = list[i], list[c[i]]
+				}
+				if !yield(slices.Clone(list)) {
+					return
+				}
+				c[i]++
+				i = 1
+			} else {
+				c[i] = 0
+				i++
+			}
+		}
 	}
 }

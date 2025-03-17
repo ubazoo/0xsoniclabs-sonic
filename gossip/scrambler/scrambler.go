@@ -247,15 +247,7 @@ func sortPartition(partition []transaction, tieBreaker ...tieBreaker) []transact
 	// the partition. Here, we assume that the initial nonce is the smallest
 	// nonce that is referenced by any transaction in the partition. This could
 	// be improved by fetching the actual nonce from the database.
-
-	nonces := state{} // sender -> nonce
-	for _, tx := range partition {
-		for _, a := range tx.actions() {
-			if nonce, found := nonces[a.sender]; !found || a.nonce < nonce {
-				nonces[a.sender] = a.nonce
-			}
-		}
-	}
+	nonces := getPresumedInitialState(partition)
 
 	// Select the heuristic to be used to break ties when multiple transactions
 	// can be processed at the same time.
@@ -314,13 +306,36 @@ type tieBreaker func(options []transaction, all []transaction, nonces state) tra
 // sorting transactions.
 type state map[int]int // account -> nonce
 
-func (s *state) apply(tx transaction) {
-	for _, a := range tx.actions() {
+func getPresumedInitialState(transactions []transaction) state {
+	// Compute the initial state of nonces indicated by the transactions.
+	state := state{}
+	for _, tx := range transactions {
+		for _, a := range tx.actions() {
+			if nonce, found := state[a.sender]; !found || a.nonce < nonce {
+				state[a.sender] = a.nonce
+			}
+		}
+	}
+	return state
+}
+
+func (s *state) apply(tx transaction) (bool, int) {
+	// Check that the transaction can be processed.
+	if (*s)[tx.main.sender] != tx.main.nonce {
+		return false, 0
+	}
+	(*s)[tx.main.sender]++
+
+	// Apply the authorizations.
+	passedAuthorizations := 0
+	for _, a := range tx.auth {
 		cur := (*s)[a.sender]
 		if a.nonce == cur {
 			(*s)[a.sender]++
+			passedAuthorizations++
 		}
 	}
+	return true, passedAuthorizations
 }
 
 func (s state) copy() state {
@@ -346,20 +361,61 @@ func pickOptimal(
 	nonces state,
 ) transaction {
 	var best transaction
-	bestNumberOfTransactions := 0
+	bestScore := score{}
 	for _, tx := range ready {
 		// Copy the state to avoid modifying the original state.
-		noncesCopy := nonces.copy()
-		noncesCopy.apply(tx)
-		numTransactions := 1 + len(getTransactionOrder(
-			transactions, noncesCopy, pickOptimal,
-		))
-		if numTransactions > bestNumberOfTransactions {
+		state := nonces.copy()
+
+		// apply the transaction
+		_, numAuthorizations := state.apply(tx)
+
+		order := getTransactionOrder(transactions, state.copy(), pickOptimal)
+		score := eval(state.copy(), order)
+
+		// add the score of the current transaction to the total score
+		score.numTransactions++
+		score.numAuthorizations += numAuthorizations
+
+		if score.isBetterThan(bestScore) {
 			best = tx
-			bestNumberOfTransactions = numTransactions
+			bestScore = score
 		}
 	}
 	return best
+}
+
+// score is a summary of the quality of a transaction order.
+type score struct {
+	numTransactions   int
+	numAuthorizations int
+}
+
+func (s score) isBetterThan(other score) bool {
+	return s.numTransactions > other.numTransactions ||
+		(s.numTransactions == other.numTransactions &&
+			s.numAuthorizations > other.numAuthorizations)
+}
+
+// eval computes the score of a given order of transactions for the given
+// initial state of nonces.
+func eval(nonces state, order []transaction) score {
+	score := score{}
+	state := maps.Clone(nonces)
+	for _, tx := range order {
+		if state[tx.main.sender] != tx.main.nonce {
+			continue
+		}
+		state[tx.main.sender]++
+		score.numTransactions++
+		for _, a := range tx.auth {
+			if state[a.sender] != a.nonce {
+				continue
+			}
+			state[a.sender]++
+			score.numAuthorizations++
+		}
+	}
+	return score
 }
 
 // --- Interleaving ---
