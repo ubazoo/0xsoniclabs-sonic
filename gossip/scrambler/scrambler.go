@@ -351,6 +351,102 @@ func pickFirst(
 	return ready[0]
 }
 
+type actionKind int
+
+const (
+	actionKind_Transaction actionKind = iota
+	actionKind_Authorization
+)
+
+// pickHighestPotential is a tie breaker that selects the transaction that has
+// the longest chain of transactions and authorizations depending on it.
+func pickHighestPotential(
+	ready []transaction,
+	all []transaction,
+	_ state,
+) transaction {
+	if len(ready) == 1 {
+		return ready[0]
+	}
+
+	// Index all actions to simplify the search for dependencies.
+	actions := map[action]actionKind{}
+	for _, tx := range all {
+		actions[tx.main] = actionKind_Transaction
+		for _, a := range tx.auth {
+			if _, found := actions[a]; !found {
+				actions[a] = actionKind_Authorization
+			}
+		}
+	}
+
+	potential := func(a action) score {
+		// Authorizations with the same nonce of a transaction are preventing
+		// the transaction from being processed and are thus scored negatively.
+		if kind := actions[a]; kind == actionKind_Transaction {
+			return score{numTransactions: -1}
+		}
+		potential := score{}
+		for i := a.nonce; ; i++ {
+			kind, found := actions[action{a.sender, i}]
+			if !found {
+				break
+			}
+			if kind == actionKind_Transaction {
+				potential.numTransactions++
+			} else {
+				potential.numAuthorizations++
+			}
+		}
+		return potential
+	}
+
+	// Compute the potential of each transaction.
+	type sender = int
+	txPotential := make([]score, len(ready))
+	for i, tx := range ready {
+		perSender := map[sender]score{}
+		for _, a := range tx.auth {
+			if a == tx.main {
+				continue
+			}
+			got := potential(a)
+			if cur, found := perSender[a.sender]; !found {
+				perSender[a.sender] = got
+			} else {
+				if got.isBetterThan(cur) {
+					perSender[a.sender] = got
+				}
+			}
+		}
+		potential := score{}
+		for _, p := range perSender {
+			potential.numTransactions += p.numTransactions
+			potential.numAuthorizations += p.numAuthorizations
+		}
+		txPotential[i] = potential
+	}
+
+	/*
+		for i := range ready {
+			fmt.Printf("%v - %v\n", ready[i], txPotential[i])
+		}
+		fmt.Printf("\n")
+	*/
+
+	// pick the transaction with the highest potential
+	bestPotential := txPotential[0]
+	bestTransactionPosition := 0
+	for i, p := range txPotential {
+		if p.isBetterThan(bestPotential) {
+			bestPotential = p
+			bestTransactionPosition = i
+		}
+	}
+
+	return ready[bestTransactionPosition]
+}
+
 // pickOptimal is a tie breaker that selects the transaction that allows for the
 // most transactions to be processed in total. This implementation is producing
 // the optimal result. However, its runtime may be exponential in the size of

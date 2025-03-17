@@ -210,6 +210,80 @@ func TestSortPartition_KnownExamples_ProduceExpectedResult(t *testing.T) {
 	}
 }
 
+func TestSortPartition_HighestPotential_KeyExamples(t *testing.T) {
+
+	tests := map[string]struct {
+		transactions []transaction
+		result       []int
+	}{
+		"empty": {},
+		"only one transaction": {
+			[]transaction{
+				tx(a(0, 0)),
+			},
+			[]int{0},
+		},
+		"prefers transactions with more authorizations": {
+			[]transaction{
+				tx(a(10, 1)),
+				tx(a(10, 1), a(12, 1)), // TODO: should respect gas prices for replacements
+			},
+			[]int{1},
+		},
+		"identifies authorizations as an enabler": {
+			[]transaction{
+				tx(a(10, 2)),
+				tx(a(12, 1), a(10, 1)),
+			},
+			[]int{1, 0},
+		},
+		"identifies authorizations as a disabler": {
+			[]transaction{
+				tx(a(10, 1)),
+				tx(a(12, 1), a(10, 1)),
+			},
+			[]int{0, 1},
+		},
+		"identifies authorizations as a disabler (2)": { // TODO: make all tests order-invariant
+			[]transaction{
+				tx(a(12, 1), a(10, 1)), // < this authorization should have negative potential
+				tx(a(10, 1)),
+			},
+			[]int{1, 0},
+		},
+		"identify collision with transaction action": {
+			[]transaction{
+				tx(a(10, 1), a(10, 1)), // < this authorization should have neutral potential
+				tx(a(12, 1), a(14, 1), a(10, 1)),
+			},
+			[]int{0, 1},
+		},
+		/* This one is not supported ...
+		"delays authentications if another transaction could enable it": {
+			[]transaction{
+				tx(a(10, 1), a(12, 2)),
+				tx(a(12, 1)),
+			},
+			[]int{1, 0},
+		},
+		*/
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+
+			// make sure the test examples contain connected transactions
+			parts := partition(tt.transactions)
+			require.LessOrEqual(len(parts), 1)
+
+			got := sortPartition(tt.transactions, pickHighestPotential)
+			res := toIndices(t, tt.transactions, got)
+			require.Equal(tt.result, res)
+		})
+	}
+}
+
 func TestInterleaving_Examples_ProduceExpectedInterleaving(t *testing.T) {
 	test := map[string][][]int{
 		"empty":                             {},
@@ -383,11 +457,38 @@ func FuzzGetExecutionOrder_FindDiffBetweenOptimalAndPickFirst(f *testing.F) {
 	// edge cases where the heuristic needs to be improved.
 	f.Fuzz(func(t *testing.T, data []byte) {
 		transactions := parseTransactions(data)
+		state := getPresumedInitialState(transactions)
 		a := GetExecutionOrder(transactions, pickFirst)
 		b := GetExecutionOrder(transactions, pickOptimal)
 
-		if len(a) != len(b) {
-			t.Fatalf("different lengths: %v vs %v", a, b)
+		scoreA := eval(state.copy(), a)
+		scoreB := eval(state.copy(), b)
+		if scoreA != scoreB {
+			t.Log("transactions: ", transactions)
+			t.Log("pickFirst:    ", a)
+			t.Log("pickOptimal:  ", b)
+			t.Fatalf("different scores: %v vs %v", scoreA, scoreB)
+		}
+	})
+}
+
+func FuzzGetExecutionOrder_FindDiffBetweenOptimalAndPickHighestPotential(f *testing.F) {
+	// This fuzzer test helps to identify cases where the optimal and the
+	// highest-potential strategy produce different results. This can help to
+	// identify edge cases where the heuristic needs to be improved.
+	f.Fuzz(func(t *testing.T, data []byte) {
+		transactions := parseTransactions(data)
+		state := getPresumedInitialState(transactions)
+		a := GetExecutionOrder(transactions, pickHighestPotential)
+		b := GetExecutionOrder(transactions, pickOptimal)
+
+		scoreA := eval(state.copy(), a)
+		scoreB := eval(state.copy(), b)
+		if scoreA != scoreB {
+			t.Log("transactions:         ", transactions)
+			t.Log("pickHighestPotential: ", a)
+			t.Log("pickOptimal:          ", b)
+			t.Fatalf("different scores: %v vs %v", scoreA, scoreB)
 		}
 	})
 }
