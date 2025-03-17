@@ -284,6 +284,110 @@ func TestSortPartition_HighestPotential_KeyExamples(t *testing.T) {
 	}
 }
 
+func TestSortPartition2_KeyExamples(t *testing.T) {
+
+	tests := map[string]struct {
+		transactions []transaction
+		result       []int
+	}{
+		"empty": {},
+		"only one transaction": {
+			[]transaction{
+				tx(a(0, 0)),
+			},
+			[]int{0},
+		},
+		"prefers transactions with more authorizations": {
+			[]transaction{
+				tx(a(10, 1)),
+				tx(a(10, 1), a(12, 1)), // TODO: should respect gas prices for replacements
+			},
+			[]int{1},
+		},
+		"identifies authorizations as an enabler": {
+			[]transaction{
+				tx(a(10, 2)),
+				tx(a(12, 1), a(10, 1)),
+			},
+			[]int{1, 0},
+		},
+		"identifies authorizations as a disabler": {
+			[]transaction{
+				tx(a(10, 1)),
+				tx(a(12, 1), a(10, 1)),
+			},
+			[]int{0, 1},
+		},
+		"identifies authorizations as a disabler (2)": { // TODO: make all tests order-invariant
+			[]transaction{
+				tx(a(12, 1), a(10, 1)), // < this authorization should have negative potential
+				tx(a(10, 1)),
+			},
+			[]int{1, 0},
+		},
+		"identify collision with transaction action": {
+			[]transaction{
+				tx(a(10, 1), a(10, 1)),
+				tx(a(12, 1), a(14, 1), a(10, 1)),
+			},
+			[]int{0, 1},
+		},
+		"delays authentications if another transaction could enable it": {
+			[]transaction{
+				tx(a(10, 1), a(12, 2)),
+				tx(a(12, 1)),
+			},
+			[]int{1, 0},
+		},
+		"favor longer authentication lists": {
+			[]transaction{
+				tx(a(10, 1), a(10, 1), a(12, 1)),
+				tx(a(12, 1), a(10, 1), a(10, 1), a(14, 2)),
+			},
+			[]int{1},
+		},
+		"favor self-authorized transaction over regular transaction": {
+			[]transaction{
+				tx(a(10, 1), a(10, 2)),
+				tx(a(10, 1)),
+			},
+			[]int{0},
+		},
+		"authentication should not be processed if it blocks a transaction": {
+			[]transaction{
+				// both are ready, neither has all authorizations ready to be
+				// processed, but the execution of the second prevents the
+				// first from being processed. Thus, the first should be
+				// processed first.
+				tx(a(10, 1), a(10, 3)),
+				tx(a(12, 1), a(10, 1), a(10, 1)),
+			},
+			[]int{0, 1},
+		},
+		"self-authorization is not a transaction blocker": {
+			[]transaction{
+				tx(a(10, 1), a(10, 1), a(12, 3)),
+				tx(a(12, 1), a(10, 1), a(10, 1), a(10, 1)), // < would be favoured due to the longer list of authorizations if the self-authorization would be considered a transaction blocker
+			},
+			[]int{0, 1},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+
+			// make sure the test examples contain connected transactions
+			parts := partition(tt.transactions)
+			require.LessOrEqual(len(parts), 1)
+
+			got := sortPartition2(tt.transactions, pickHighestPotential)
+			res := toIndices(t, tt.transactions, got)
+			require.Equal(tt.result, res)
+		})
+	}
+}
+
 func TestInterleaving_Examples_ProduceExpectedInterleaving(t *testing.T) {
 	test := map[string][][]int{
 		"empty":                             {},
@@ -409,7 +513,7 @@ func BenchmarkPartitioning_ExtensiveAuthorizations(b *testing.B) {
 func FuzzGetExecutionOrder_OptimalHeuristicProducesOptimalOrder(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		transactions := parseTransactions(data)
-		sorted := GetExecutionOrder(transactions, pickOptimal)
+		sorted := GetExecutionOrder(transactions, sortPartition, pickOptimal)
 
 		state := getPresumedInitialState(transactions)
 		obtainedScore := eval(state, sorted)
@@ -436,7 +540,7 @@ func FuzzGetExecutionOrder_OptimalHeuristicProducesOptimalOrder(f *testing.F) {
 func FuzzGetExecutionOrder_ProducesAFullyExecutableTransactionOrder(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		transactions := parseTransactions(data)
-		sorted := GetExecutionOrder(transactions)
+		sorted := GetExecutionOrder(transactions, sortPartition)
 
 		// Compute the initial state of nonces indicated by the transactions.
 		state := getPresumedInitialState(transactions)
@@ -458,8 +562,8 @@ func FuzzGetExecutionOrder_FindDiffBetweenOptimalAndPickFirst(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		transactions := parseTransactions(data)
 		state := getPresumedInitialState(transactions)
-		a := GetExecutionOrder(transactions, pickFirst)
-		b := GetExecutionOrder(transactions, pickOptimal)
+		a := GetExecutionOrder(transactions, sortPartition, pickFirst)
+		b := GetExecutionOrder(transactions, sortPartition, pickOptimal)
 
 		scoreA := eval(state.copy(), a)
 		scoreB := eval(state.copy(), b)
@@ -479,8 +583,8 @@ func FuzzGetExecutionOrder_FindDiffBetweenOptimalAndPickHighestPotential(f *test
 	f.Fuzz(func(t *testing.T, data []byte) {
 		transactions := parseTransactions(data)
 		state := getPresumedInitialState(transactions)
-		a := GetExecutionOrder(transactions, pickHighestPotential)
-		b := GetExecutionOrder(transactions, pickOptimal)
+		a := GetExecutionOrder(transactions, sortPartition, pickHighestPotential)
+		b := GetExecutionOrder(transactions, sortPartition, pickOptimal)
 
 		scoreA := eval(state.copy(), a)
 		scoreB := eval(state.copy(), b)
@@ -488,6 +592,28 @@ func FuzzGetExecutionOrder_FindDiffBetweenOptimalAndPickHighestPotential(f *test
 			t.Log("transactions:         ", transactions)
 			t.Log("pickHighestPotential: ", a)
 			t.Log("pickOptimal:          ", b)
+			t.Fatalf("different scores: %v vs %v", scoreA, scoreB)
+		}
+	})
+}
+
+func FuzzGetExecutionOrder_FindDiffBetweenOptimalAndSortPartition2(f *testing.F) {
+	// This fuzzer test helps to identify cases where the optimal and the
+	// highest-potential strategy produce different results. This can help to
+	// identify edge cases where the heuristic needs to be improved.
+	f.Fuzz(func(t *testing.T, data []byte) {
+		transactions := parseTransactions(data)
+		state := getPresumedInitialState(transactions)
+		a := GetExecutionOrder(transactions, sortPartition2)
+		b := GetExecutionOrder(transactions, sortPartition, pickOptimal)
+
+		scoreA := eval(state.copy(), a)
+		scoreB := eval(state.copy(), b)
+		//if scoreA != scoreB {
+		if scoreA.numTransactions != scoreB.numTransactions {
+			t.Log("transactions:   ", transactions)
+			t.Log("SortPartition2: ", a)
+			t.Log("pickOptimal:    ", b)
 			t.Fatalf("different scores: %v vs %v", scoreA, scoreB)
 		}
 	})

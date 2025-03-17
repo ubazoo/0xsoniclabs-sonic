@@ -15,7 +15,11 @@ import (
 // Beyond the order defined by dependencies, the order of transactions is
 // randomized in a deterministic way. This is to avoid the risk of transaction
 // ordering attacks.
-func GetExecutionOrder(transactions []transaction, pick ...tieBreaker) []transaction {
+func GetExecutionOrder(
+	transactions []transaction,
+	sort func([]transaction, ...tieBreaker) []transaction,
+	pick ...tieBreaker,
+) []transaction {
 	// Step 1: identify partitioning of transactions such that each partition is
 	// a set of transactions that have dependencies only within the partition.
 	partitions := partition(transactions)
@@ -23,7 +27,7 @@ func GetExecutionOrder(transactions []transaction, pick ...tieBreaker) []transac
 	// Step 2: sort transactions within partitions respecting the dependencies.
 	// This step may also remove transactions that can not be processed.
 	for i, partition := range partitions {
-		partitions[i] = sortPartition(partition, pick...)
+		partitions[i] = sort(partition, pick...)
 	}
 
 	// Step 3: interleave partitions using a random order.
@@ -512,6 +516,128 @@ func eval(nonces state, order []transaction) score {
 		}
 	}
 	return score
+}
+
+func sortPartition2(partition []transaction, _ ...tieBreaker) []transaction {
+
+	// WARNING: This is a proof-of-concept that is not necessarily efficient.
+	// It is a simple implementation that is not optimized to minimize the
+	// worst-case runtime complexity. It is intended for prototype purposes
+	// only.
+
+	// We start by determining the current nonces of all senders referenced in
+	// the partition. Here, we assume that the initial nonce is the smallest
+	// nonce that is referenced by any transaction in the partition. This could
+	// be improved by fetching the actual nonce from the database.
+	nonces := getPresumedInitialState(partition)
+
+	// track the set of enabled actions
+	enabled := map[action]unit{}
+	for sender, nonce := range nonces {
+		enabled[action{sender, nonce}] = unit{}
+	}
+
+	// create the execution order step by step
+	res := []transaction{}
+	for {
+		// get list of all transactions that can be processed
+		ready := []transaction{}
+		for _, tx := range partition {
+			if _, found := enabled[tx.main]; found {
+				ready = append(ready, tx)
+			}
+		}
+		if len(ready) == 0 {
+			break
+		}
+
+		// select the transaction to be processed next
+		next := pickNext(ready, enabled)
+
+		res = append(res, next)
+
+		// update set of enabled actions
+		for _, a := range next.actions() {
+			if _, found := enabled[a]; found {
+				delete(enabled, a)
+				enabled[action{a.sender, a.nonce + 1}] = unit{}
+			}
+		}
+	}
+
+	return res
+}
+
+func pickNext(ready []transaction, enabled map[action]unit) transaction {
+	// compute all transactions currently pending
+	pendingTransactions := map[action]unit{}
+	for _, tx := range ready {
+		pendingTransactions[tx.main] = unit{}
+	}
+
+	// look for candidates where all authorizations are enabled
+	candidates := []transaction{}
+	for _, tx := range ready {
+		ready := true
+		for _, a := range tx.auth {
+			// if there is a transaction pending for this authorization, ignore
+			// the current transaction unless it is the current transaction
+			// itself.
+			if tx.main != a {
+				if _, found := pendingTransactions[a]; found {
+					ready = false
+					break
+				}
+			}
+			if a != (action{tx.main.sender, tx.main.nonce + 1}) {
+				if _, found := enabled[a]; !found {
+					ready = false
+					break
+				}
+			}
+		}
+		if ready {
+			candidates = append(candidates, tx)
+		}
+	}
+
+	// If there are no candidates with all authorizations enabled, favor
+	// those transactions that do not have any authorizations disabling a
+	// pending transaction.
+	if len(candidates) == 0 {
+		for _, tx := range ready {
+			ready := true
+			for _, a := range tx.auth {
+				if tx.main != a {
+					if _, found := pendingTransactions[a]; found {
+						ready = false
+						break
+					}
+				}
+			}
+			if ready {
+				candidates = append(candidates, tx)
+			}
+		}
+	}
+
+	// If there are no fully enabled candidates, consider all ready transactions
+	// as candidates.
+	if len(candidates) == 0 {
+		candidates = ready
+	}
+
+	// pick the one with the highest number of authorizations
+	// TODO: refine this ...
+	max := 0
+	res := candidates[0]
+	for _, tx := range candidates {
+		if len(tx.auth) > max {
+			max = len(tx.auth)
+			res = tx
+		}
+	}
+	return res
 }
 
 // --- Interleaving ---
