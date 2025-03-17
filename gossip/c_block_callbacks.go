@@ -342,10 +342,32 @@ func consensusCallbackBeginBlockFn(
 					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
 					// At this point, block state is finalized
 
+					bs.LastBlock = blockCtx
+					bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
+					if sealing {
+						store.SetHistoryBlockEpochState(es.Epoch, bs, es)
+						store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
+					}
+
+					for _, tx := range blockBuilder.GetTransactions() {
+						store.evm.SetTx(tx.Hash(), tx)
+					}
+
+					// Block contains transaction hashes.
+					// It's better to have transactions stored before block, so that
+					// concurrent RPC queries can retrieve both.
+					store.SetBlock(blockCtx.Idx, block)
+					store.SetBlockIndex(block.Hash(), blockCtx.Idx)
+					store.SetBlockEpochState(bs, es)
+					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
+
 					// Build index for not skipped txs
 					if txIndex {
 						for _, tx := range evmBlock.Transactions {
-							// not skipped txs only
+							// create link transactions -> block after both components
+							// have been stored, this prevents queries (RPC) executed
+							// concurrently from finding only one of the two components
+							// of this relationship.
 							store.evm.SetTxPosition(tx.Hash(), txPositions[tx.Hash()].TxPosition)
 						}
 
@@ -358,22 +380,6 @@ func consensusCallbackBeginBlockFn(
 							}
 						}
 					}
-
-					bs.LastBlock = blockCtx
-					bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
-					if sealing {
-						store.SetHistoryBlockEpochState(es.Epoch, bs, es)
-						store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
-					}
-
-					for _, tx := range blockBuilder.GetTransactions() {
-						store.evm.SetTx(tx.Hash(), tx)
-					}
-
-					store.SetBlock(blockCtx.Idx, block)
-					store.SetBlockIndex(block.Hash(), blockCtx.Idx)
-					store.SetBlockEpochState(bs, es)
-					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
 					// Inform the SCC about the new block
 					if sccNode != nil {
