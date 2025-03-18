@@ -21,22 +21,20 @@ func GetExecutionOrder(
 	pick ...tieBreaker,
 ) []transaction {
 
-	// Step 0: remove duplicates and replacements
-	// TODO: implement this based on ...
-	//  - duplicates are identified by their hash (needs integration)
-	//  - replacements are identified by equivalent sender/nonce but different gas price
+	// Step 1: remove duplicates and replacements
+	transactions = deduplicate(transactions)
 
-	// Step 1: identify partitioning of transactions such that each partition is
+	// Step 2: identify partitioning of transactions such that each partition is
 	// a set of transactions that have dependencies only within the partition.
 	partitions := partition(transactions)
 
-	// Step 2: sort transactions within partitions respecting the dependencies.
+	// Step 3: sort transactions within partitions respecting the dependencies.
 	// This step may also remove transactions that can not be processed.
 	for i, partition := range partitions {
 		partitions[i] = sort(partition, pick...)
 	}
 
-	// Step 3: interleave partitions using a random order.
+	// Step 4: interleave partitions using a random order.
 	// --- !! ATTENTION !! ---
 	// TODO: to make this function deterministic the partitions need to be
 	// sorted before interleaving them. This is not implemented yet.
@@ -56,6 +54,28 @@ func (tx transaction) actions() []action {
 type action struct {
 	sender int
 	nonce  int
+}
+
+// --- Deduplication ---
+
+// deduplicate removes duplicates and replacements from the list of transactions.
+func deduplicate(transactions []transaction) []transaction {
+
+	// WARNING: this function is removing duplicates and replacements based on
+	// the main action only. It does not consider transaction hashes or gas
+	// prices as a real-world implementation would have to do.
+
+	seen := map[action]unit{}
+	res := make([]transaction, 0, len(transactions))
+	for _, tx := range transactions {
+		if _, found := seen[tx.main]; found {
+			continue
+		}
+		seen[tx.main] = unit{}
+		res = append(res, tx)
+	}
+
+	return res
 }
 
 // --- Partitioning ---
