@@ -20,6 +20,12 @@ func GetExecutionOrder(
 	sort func([]transaction, ...tieBreaker) []transaction,
 	pick ...tieBreaker,
 ) []transaction {
+
+	// Step 0: remove duplicates and replacements
+	// TODO: implement this based on ...
+	//  - duplicates are identified by their hash (needs integration)
+	//  - replacements are identified by equivalent sender/nonce but different gas price
+
 	// Step 1: identify partitioning of transactions such that each partition is
 	// a set of transactions that have dependencies only within the partition.
 	partitions := partition(transactions)
