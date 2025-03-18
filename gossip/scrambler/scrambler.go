@@ -82,6 +82,8 @@ func deduplicate(transactions []transaction) []transaction {
 // removeMuteAuthorizations removes authorizations that can never be successful.
 // Examples are authorizations that have the same sender and nonce as the
 // transaction itself or are duplicates of other authorizations.
+//
+// This function is O(|actions|).
 func removeMuteAuthorizations(transactions []transaction) []transaction {
 	seen := map[action]unit{}
 	for i := range transactions {
@@ -365,11 +367,17 @@ type tieBreaker func(options []transaction, all []transaction, nonces state) tra
 // sorting transactions.
 type state map[int]int // account -> nonce
 
+// getPresetInitialState returns the initial state of nonces based on the
+// transactions. This function assumes that the initial nonce is the smallest
+// nonce that is referenced by any transaction in the list of transactions.
+//
+// This function is O(|actions|).
 func getPresumedInitialState(transactions []transaction) state {
+	// O(|actions|)
 	transactions = removeMuteAuthorizations(transactions)
 	// Compute the initial state of nonces indicated by the transactions.
 	state := state{}
-	for _, tx := range transactions {
+	for _, tx := range transactions { // O(|actions|)
 		for _, a := range tx.actions() {
 			if nonce, found := state[a.sender]; !found || a.nonce < nonce {
 				state[a.sender] = a.nonce
@@ -709,21 +717,21 @@ func sortPartition3(partition []transaction, _ ...tieBreaker) []transaction {
 	// the partition. Here, we assume that the initial nonce is the smallest
 	// nonce that is referenced by any transaction in the partition. This could
 	// be improved by fetching the actual nonce from the database.
-	nonces := getPresumedInitialState(partition)
+	nonces := getPresumedInitialState(partition) // O(|actions|)
 
 	// Remove all un-reachable transactions from the partition.
-	partition = filterUnreachable(partition, nonces)
+	partition = filterUnreachable(partition, nonces) // O(|actions|)
 
 	// create a set of pending transactions
 	pending := map[action]unit{}
-	for _, tx := range partition {
+	for _, tx := range partition { // O(|transactions|) <= O(|actions|)
 		pending[tx.main] = unit{}
 	}
 
 	// Initialize the list of transactions sorted by their evaluation.
 	// TODO: use a priority queue here.
 	candidates := make([]valuedTransaction, len(partition))
-	for i, tx := range partition {
+	for i, tx := range partition { // O(|actions|)
 		candidates[i] = valuedTransaction{
 			tx:    tx,
 			value: evaluate(tx, nonces, pending),
@@ -732,9 +740,13 @@ func sortPartition3(partition []transaction, _ ...tieBreaker) []transaction {
 
 	// create the execution order step by step
 	res := []transaction{}
-	for len(candidates) > 0 {
+	// This loop right now is
+	// O(|transactions| * |actions| * log(|transactions|))
+	// which is not good enough.
+	for len(candidates) > 0 { // up to |transactions| iterations
 
 		// Sort the list of candidates by their current value.
+		// This is O(N log N) where N is the number of transactions.
 		slices.SortFunc(candidates, func(a, b valuedTransaction) int {
 			return a.value.compare(b.value)
 		})
@@ -751,10 +763,10 @@ func sortPartition3(partition []transaction, _ ...tieBreaker) []transaction {
 		// Schedule the selected transaction and apply effects.
 		res = append(res, next.tx)
 		delete(pending, next.tx.main)
-		nonces.apply(next.tx)
+		nonces.apply(next.tx) // amortized to O(|actions|) over all iterations
 
 		// Update the evaluation of all candidates.
-		for i := range len(candidates) {
+		for i := range len(candidates) { // O(|actions|)
 			candidates[i].value = evaluate(candidates[i].tx, nonces, pending)
 		}
 	}
@@ -762,9 +774,15 @@ func sortPartition3(partition []transaction, _ ...tieBreaker) []transaction {
 	return res
 }
 
+// filterUnreachable removes transactions that can not be processed in any
+// schedule due to missing dependencies. In particular, if a transaction has
+// a sender s and nonce n, and the current nonce is not n-1 nor is there an
+// action with sender s and nonce n-1, the transaction can not be processed.
+//
+// This function is O(|actions|).
 func filterUnreachable(tx []transaction, nonces state) []transaction {
 	releases := map[action]unit{}
-	for _, tx := range tx {
+	for _, tx := range tx { // O(|actions|)
 		releases[tx.main] = unit{}
 		for _, a := range tx.auth {
 			releases[a] = unit{}
@@ -772,7 +790,7 @@ func filterUnreachable(tx []transaction, nonces state) []transaction {
 	}
 
 	res := []transaction{}
-	for _, tx := range tx {
+	for _, tx := range tx { // O(|transactions|) <= O(|actions|)
 		if nonces[tx.main.sender] == tx.main.nonce {
 			res = append(res, tx)
 			continue
@@ -816,6 +834,10 @@ type valuedTransaction struct {
 	value value
 }
 
+// evaluate computes the value of a transaction based on the current state of
+// nonces and the set of pending transactions.
+//
+// This function is O(|tx.auth|).
 func evaluate(
 	tx transaction,
 	nonces state,
