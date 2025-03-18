@@ -57,6 +57,14 @@ type action struct {
 	nonce  int
 }
 
+func (a action) predecessor() action {
+	return action{a.sender, a.nonce - 1}
+}
+
+func (a action) successor() action {
+	return action{a.sender, a.nonce + 1}
+}
+
 // --- Deduplication ---
 
 // deduplicate removes duplicates and replacements from the list of transactions.
@@ -729,45 +737,74 @@ func sortPartition3(partition []transaction, _ ...tieBreaker) []transaction {
 	}
 
 	// Initialize the list of transactions sorted by their evaluation.
-	// TODO: use a priority queue here.
-	candidates := make([]valuedTransaction, len(partition))
-	for i, tx := range partition { // O(|actions|)
-		candidates[i] = valuedTransaction{
+	queue := newHeap[action](func(a, b valuedTransaction) int {
+		return b.value.compare(a.value) // minimum!
+	})
+	for _, tx := range partition { // O(|actions|)
+		// tx.main is unique, since we removed duplicates and replacements
+		queue.Add(tx.main, valuedTransaction{
 			tx:    tx,
 			value: evaluate(tx, nonces, pending),
+		})
+	}
+
+	// Create a map of dependencies linking actions to transactions they may
+	// be affecting.
+	dependencies := map[action][]transaction{}
+	for _, tx := range partition { // O(|actions|)
+		dependencies[tx.main.predecessor()] = append(dependencies[tx.main.predecessor()], tx)
+		dependencies[tx.main] = append(dependencies[tx.main], tx)
+		dependencies[tx.main.successor()] = append(dependencies[tx.main.successor()], tx)
+		for _, a := range tx.auth {
+			dependencies[a.predecessor()] = append(dependencies[a.predecessor()], tx)
+			dependencies[a] = append(dependencies[a], tx)
+			dependencies[a.successor()] = append(dependencies[a.successor()], tx)
 		}
 	}
 
 	// create the execution order step by step
 	res := []transaction{}
-	// This loop right now is
-	// O(|transactions| * |actions| * log(|transactions|))
-	// which is not good enough.
-	for len(candidates) > 0 { // up to |transactions| iterations
-
-		// Sort the list of candidates by their current value.
-		// This is O(N log N) where N is the number of transactions.
-		slices.SortFunc(candidates, func(a, b valuedTransaction) int {
-			return a.value.compare(b.value)
-		})
-
-		//fmt.Printf("candidates: %v\n", candidates)
+	// This loop has a complexity of
+	//   O(max(|actions| * log(|transactions|, |transactions| * log(|transactions|)))
+	// which is O(|actions| * log(|actions|)).
+	for { // up to |transactions| iterations
 
 		// Pick the top candidate and check if it can be processed.
-		next := candidates[0]
-		candidates = candidates[1:]
-		if !next.value.runnable {
+		next, found := queue.Pop() // O(log(|transactions|))
+		if !found || !next.value.runnable {
 			break
 		}
 
 		// Schedule the selected transaction and apply effects.
 		res = append(res, next.tx)
 		delete(pending, next.tx.main)
-		nonces.apply(next.tx) // amortized to O(|actions|) over all iterations
 
-		// Update the evaluation of all candidates.
-		for i := range len(candidates) { // O(|actions|)
-			candidates[i].value = evaluate(candidates[i].tx, nonces, pending)
+		// Update the evaluation of all candidates affected by the scheduled
+		// transaction.
+		// The following loops have a combined complexity of
+		// O(max(|actions|*log(|transactions|), |actions|*O(|tx.auth|)))
+		// over all iterations of the outer loop. This is because each
+		// dependency is processed at most once and there are at most
+		// 3*|actions| dependencies.
+		nonces[next.tx.main.sender]++
+		for _, tx := range dependencies[next.tx.main] {
+			queue.Update(tx.main, valuedTransaction{ // O(log(|transactions|))
+				tx:    tx,
+				value: evaluate(tx, nonces, pending), // O(|tx.auth|)
+			})
+		}
+		delete(dependencies, next.tx.main)
+		for _, a := range next.tx.auth {
+			if nonces[a.sender] == a.nonce {
+				nonces[a.sender]++
+				for _, tx := range dependencies[a] {
+					queue.Update(tx.main, valuedTransaction{ // O(log(|transactions|))
+						tx:    tx,
+						value: evaluate(tx, nonces, pending), // O(|tx.auth|)
+					})
+				}
+				delete(dependencies, a)
+			}
 		}
 	}
 

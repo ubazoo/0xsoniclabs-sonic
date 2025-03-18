@@ -622,6 +622,24 @@ func BenchmarkPartitioning_ExtensiveAuthorizations(b *testing.B) {
 	}
 }
 
+func BenchmarkSorting_Chain(b *testing.B) {
+	for n := 1; n < 1<<17; n *= 2 {
+		b.Run(fmt.Sprintf("N=%d", n), func(b *testing.B) {
+			// Note: this is just an example, not necessarily the worst case.
+			// TODO: find the worst case
+			transactions := make([]transaction, n)
+			transactions[0] = tx(a(0, 0))
+			for i := 1; i < n; i++ {
+				transactions[i] = tx(a(i-1, 1), a(i, 0))
+			}
+			b.ResetTimer()
+			for range b.N {
+				sortPartition3(transactions)
+			}
+		})
+	}
+}
+
 func FuzzGetExecutionOrder_OptimalHeuristicProducesOptimalOrder(f *testing.F) {
 	f.Fuzz(func(t *testing.T, data []byte) {
 		transactions := parseTransactions(data)

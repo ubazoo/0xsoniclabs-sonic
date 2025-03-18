@@ -45,9 +45,9 @@ func (h *heap[K, V]) Pop() (V, bool) {
 	}
 	key := h.data[0].key
 	value := h.data[0].value
-	delete(h.index, key)
 	h.swap(0, len(h.data)-1)
 	h.data = h.data[:len(h.data)-1]
+	delete(h.index, key)
 
 	// Move the entry down to where it belongs.
 	h.moveDown(0)
