@@ -23,6 +23,7 @@ func GetExecutionOrder(
 
 	// Step 1: remove duplicates and replacements
 	transactions = deduplicate(transactions)
+	transactions = removeMuteAuthorizations(transactions)
 
 	// Step 2: identify partitioning of transactions such that each partition is
 	// a set of transactions that have dependencies only within the partition.
@@ -76,6 +77,34 @@ func deduplicate(transactions []transaction) []transaction {
 	}
 
 	return res
+}
+
+// removeMuteAuthorizations removes authorizations that can never be successful.
+// Examples are authorizations that have the same sender and nonce as the
+// transaction itself or are duplicates of other authorizations.
+func removeMuteAuthorizations(transactions []transaction) []transaction {
+	seen := map[action]unit{}
+	for i := range transactions {
+		tx := transactions[i]
+		res := transaction{
+			main: tx.main,
+		}
+		for _, auth := range tx.auth {
+			// authorizations to the transactions sender account must have
+			// a higher nonce than the transaction itself.
+			if auth.sender == tx.main.sender && auth.nonce <= tx.main.sender {
+				continue
+			}
+			// duplicates can be ignored for the scheduling
+			if _, found := seen[auth]; found {
+				continue
+			}
+			seen[auth] = unit{}
+			res.auth = append(res.auth, auth)
+		}
+		transactions[i] = res
+	}
+	return transactions
 }
 
 // --- Partitioning ---
@@ -457,13 +486,6 @@ func pickHighestPotential(
 		txPotential[i] = potential
 	}
 
-	/*
-		for i := range ready {
-			fmt.Printf("%v - %v\n", ready[i], txPotential[i])
-		}
-		fmt.Printf("\n")
-	*/
-
 	// pick the transaction with the highest potential
 	bestPotential := txPotential[0]
 	bestTransactionPosition := 0
@@ -543,6 +565,13 @@ func eval(nonces state, order []transaction) score {
 	}
 	return score
 }
+
+// --- Sorting 2 ---
+
+// This implementation is an improvement on the sorting algorithm above by
+// retaining precomputed information about enabled actions between consecutive
+// calls of the pickNext function. This allows for a more efficient selection of
+// the next transaction to be processed.
 
 func sortPartition2(partition []transaction, _ ...tieBreaker) []transaction {
 
@@ -664,6 +693,124 @@ func pickNext(ready []transaction, enabled map[action]unit) transaction {
 		}
 	}
 	return res
+}
+
+// --- Sorting 3 ---
+
+func sortPartition3(partition []transaction, _ ...tieBreaker) []transaction {
+
+	// WARNING: This is a proof-of-concept that is not necessarily efficient.
+	// It is a simple implementation that is not optimized to minimize the
+	// worst-case runtime complexity. It is intended for prototype purposes
+	// only.
+
+	// We start by determining the current nonces of all senders referenced in
+	// the partition. Here, we assume that the initial nonce is the smallest
+	// nonce that is referenced by any transaction in the partition. This could
+	// be improved by fetching the actual nonce from the database.
+	nonces := getPresumedInitialState(partition)
+
+	// create a set of pending transactions
+	pending := map[action]unit{}
+	for _, tx := range partition {
+		pending[tx.main] = unit{}
+	}
+
+	// Initialize the list of transactions sorted by their evaluation.
+	// TODO: use a priority queue here.
+	candidates := make([]valuedTransaction, len(partition))
+	for i, tx := range partition {
+		candidates[i] = valuedTransaction{
+			tx:    tx,
+			value: evaluate(tx, nonces, pending),
+		}
+	}
+
+	// create the execution order step by step
+	res := []transaction{}
+	for len(candidates) > 0 {
+
+		// Sort the list of candidates by their current value.
+		slices.SortFunc(candidates, func(a, b valuedTransaction) int {
+			return a.value.compare(b.value)
+		})
+
+		// Pick the top candidate and check if it can be processed.
+		next := candidates[0]
+		candidates = candidates[1:]
+		if !next.value.runnable {
+			break
+		}
+
+		// Schedule the selected transaction and apply effects.
+		res = append(res, next.tx)
+		delete(pending, next.tx.main)
+		nonces.apply(next.tx)
+
+		// Update the evaluation of all candidates.
+		for i := range len(candidates) {
+			candidates[i].value = evaluate(candidates[i].tx, nonces, pending)
+		}
+	}
+
+	return res
+}
+
+// value defines the evaluation result used for defining the scheduling priority
+// of transactions.
+type value struct {
+	runnable                                          bool
+	numAuthorizationsCollidingWithPendingTransactions int
+	numBlockedAuthorizations                          int
+	numAuthorizations                                 int
+}
+
+func (v value) compare(other value) int {
+	if v.runnable != other.runnable {
+		if v.runnable {
+			return -1
+		} else {
+			return 1
+		}
+	}
+	if res := cmp.Compare(v.numAuthorizationsCollidingWithPendingTransactions, other.numAuthorizationsCollidingWithPendingTransactions); res != 0 {
+		return res
+	}
+	if res := cmp.Compare(v.numBlockedAuthorizations, other.numBlockedAuthorizations); res != 0 {
+		return res
+	}
+	return -cmp.Compare(v.numAuthorizations, other.numAuthorizations)
+}
+
+type valuedTransaction struct {
+	tx    transaction
+	value value
+}
+
+func evaluate(
+	tx transaction,
+	nonces state,
+	pending map[action]unit,
+) value {
+
+	value := value{
+		runnable:          nonces[tx.main.sender] == tx.main.nonce,
+		numAuthorizations: len(tx.auth),
+	}
+
+	for _, a := range tx.auth {
+		if a == tx.main {
+			continue
+		}
+		if _, found := pending[a]; found {
+			value.numAuthorizationsCollidingWithPendingTransactions++
+		}
+		if a.nonce > nonces[a.sender] {
+			value.numBlockedAuthorizations++
+		}
+	}
+
+	return value
 }
 
 // --- Interleaving ---

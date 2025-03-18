@@ -388,6 +388,84 @@ func TestSortPartition2_KeyExamples(t *testing.T) {
 	}
 }
 
+func TestSortPartition3_KeyExamples(t *testing.T) {
+
+	tests := map[string]struct {
+		transactions []transaction
+		result       []int
+	}{
+		"empty": {},
+		"only one transaction": {
+			[]transaction{
+				tx(a(0, 0)),
+			},
+			[]int{0},
+		},
+		"identifies authorizations as an enabler": {
+			[]transaction{
+				tx(a(10, 2)),
+				tx(a(12, 1), a(10, 1)),
+			},
+			[]int{1, 0},
+		},
+		"identifies authorizations as a disabler": {
+			[]transaction{
+				tx(a(10, 1)),
+				tx(a(12, 1), a(10, 1)),
+			},
+			[]int{0, 1},
+		},
+		"delays authentications if another transaction could enable it": {
+			[]transaction{
+				tx(a(10, 1), a(12, 2)),
+				tx(a(12, 1)),
+			},
+			[]int{1, 0},
+		},
+		"favor longer authentication lists in conflict cases": {
+			[]transaction{
+				// Only one of these transactions can succeed, while the other
+				// one is turned obsolete. In such cases, the one with the
+				// longer list of authorizations should be favored.
+				tx(a(10, 1), a(12, 1)),
+				tx(a(12, 1), a(10, 1), a(14, 2)),
+			},
+			[]int{1},
+		},
+		"authentication should not be processed if it blocks a transaction": {
+			[]transaction{
+				// both are ready, neither has all authorizations ready to be
+				// processed, but the execution of the second would prevent the
+				// first from being processed. Thus, the first should be
+				// processed first.
+				tx(a(10, 1), a(10, 3)),
+				tx(a(12, 1), a(10, 1)),
+			},
+			[]int{0, 1},
+		},
+		"self-authorization is not a transaction blocker": {
+			[]transaction{
+				tx(a(10, 1), a(10, 2)),
+			},
+			[]int{0},
+		},
+	}
+
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			require := require.New(t)
+
+			// make sure the test examples contain connected transactions
+			parts := partition(tt.transactions)
+			require.LessOrEqual(len(parts), 1)
+
+			got := sortPartition3(tt.transactions, pickHighestPotential)
+			res := toIndices(t, tt.transactions, got)
+			require.Equal(tt.result, res)
+		})
+	}
+}
+
 func TestInterleaving_Examples_ProduceExpectedInterleaving(t *testing.T) {
 	test := map[string][][]int{
 		"empty":                             {},
@@ -613,6 +691,28 @@ func FuzzGetExecutionOrder_FindDiffBetweenOptimalAndSortPartition2(f *testing.F)
 		if scoreA.numTransactions != scoreB.numTransactions {
 			t.Log("transactions:   ", transactions)
 			t.Log("SortPartition2: ", a)
+			t.Log("pickOptimal:    ", b)
+			t.Fatalf("different scores: %v vs %v", scoreA, scoreB)
+		}
+	})
+}
+
+func FuzzGetExecutionOrder_FindDiffBetweenOptimalAndSortPartition3(f *testing.F) {
+	// This fuzzer test helps to identify cases where the optimal and the
+	// highest-potential strategy produce different results. This can help to
+	// identify edge cases where the heuristic needs to be improved.
+	f.Fuzz(func(t *testing.T, data []byte) {
+		transactions := parseTransactions(data)
+		state := getPresumedInitialState(transactions)
+		a := GetExecutionOrder(transactions, sortPartition3)
+		b := GetExecutionOrder(transactions, sortPartition, pickOptimal)
+
+		scoreA := eval(state.copy(), a)
+		scoreB := eval(state.copy(), b)
+		//if scoreA != scoreB {
+		if scoreA.numTransactions != scoreB.numTransactions {
+			t.Log("transactions:   ", transactions)
+			t.Log("SortPartition3: ", a)
 			t.Log("pickOptimal:    ", b)
 			t.Fatalf("different scores: %v vs %v", scoreA, scoreB)
 		}
