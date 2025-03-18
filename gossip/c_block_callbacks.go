@@ -342,6 +342,18 @@ func consensusCallbackBeginBlockFn(
 					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
 					// At this point, block state is finalized
 
+					// Build index for not skipped txs
+					if txIndex {
+						// Index receipts
+						// Note: it's possible for receipts to get indexed twice by BR and block processing
+						if allReceipts.Len() != 0 {
+							store.evm.SetReceipts(blockCtx.Idx, allReceipts)
+							for _, r := range allReceipts {
+								store.evm.IndexLogs(r.Logs...)
+							}
+						}
+					}
+
 					bs.LastBlock = blockCtx
 					bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
 					if sealing {
@@ -361,7 +373,7 @@ func consensusCallbackBeginBlockFn(
 					store.SetBlockEpochState(bs, es)
 					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
 
-					// Build index for not skipped txs
+					// link transactions to blocks (non-skipped only)
 					if txIndex {
 						for _, tx := range evmBlock.Transactions {
 							// create link transactions -> block after both components
@@ -369,15 +381,6 @@ func consensusCallbackBeginBlockFn(
 							// concurrently from finding only one of the two components
 							// of this relationship.
 							store.evm.SetTxPosition(tx.Hash(), txPositions[tx.Hash()].TxPosition)
-						}
-
-						// Index receipts
-						// Note: it's possible for receipts to get indexed twice by BR and block processing
-						if allReceipts.Len() != 0 {
-							store.evm.SetReceipts(blockCtx.Idx, allReceipts)
-							for _, r := range allReceipts {
-								store.evm.IndexLogs(r.Logs...)
-							}
 						}
 					}
 
