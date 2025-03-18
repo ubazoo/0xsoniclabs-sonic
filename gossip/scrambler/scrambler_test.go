@@ -449,6 +449,40 @@ func TestSortPartition3_KeyExamples(t *testing.T) {
 			},
 			[]int{0},
 		},
+		"unreachable pending is not blocking executable transactions": {
+			[]transaction{
+				tx(a(10, 3)), // < unreachable
+				tx(a(12, 1), a(10, 3)),
+				tx(a(10, 1), a(12, 1)), // should be after the previous one
+			},
+			[]int{1, 2},
+		},
+		"inactive authorizations should be ignored": {
+			// The second transaction should not be prevented from being
+			// processed first due to its first authorization which, if
+			// processed correctly, would invalidate the third transaction.
+			// Since initial the account 10 has a nonce of 1, the authorizations
+			// of the second transaction have no effect. Thus, it should be
+			// processed first.
+			[]transaction{
+				tx(a(10, 1), a(12, 1)),
+				tx(a(12, 1), a(10, 2), a(10, 3)),
+				tx(a(10, 2)),
+			},
+			[]int{1, 0, 2},
+		},
+		/*
+			// Something not supported:
+			"deliberately fail authorization to enable additional transaction": {
+				[]transaction{
+					tx(a(10, 1)),
+					tx(a(12, 1), a(10, 2)),
+					tx(a(14, 1), a(10, 3)), // < should be processed before the 2nd to avoid blocking the 4th
+					tx(a(10, 3), a(14, 1)),
+				},
+				[]int{0, 2, 1, 3},
+			},
+		*/
 	}
 
 	for name, tt := range tests {

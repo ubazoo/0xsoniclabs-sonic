@@ -366,6 +366,7 @@ type tieBreaker func(options []transaction, all []transaction, nonces state) tra
 type state map[int]int // account -> nonce
 
 func getPresumedInitialState(transactions []transaction) state {
+	transactions = removeMuteAuthorizations(transactions)
 	// Compute the initial state of nonces indicated by the transactions.
 	state := state{}
 	for _, tx := range transactions {
@@ -710,6 +711,9 @@ func sortPartition3(partition []transaction, _ ...tieBreaker) []transaction {
 	// be improved by fetching the actual nonce from the database.
 	nonces := getPresumedInitialState(partition)
 
+	// Remove all un-reachable transactions from the partition.
+	partition = filterUnreachable(partition, nonces)
+
 	// create a set of pending transactions
 	pending := map[action]unit{}
 	for _, tx := range partition {
@@ -735,6 +739,8 @@ func sortPartition3(partition []transaction, _ ...tieBreaker) []transaction {
 			return a.value.compare(b.value)
 		})
 
+		//fmt.Printf("candidates: %v\n", candidates)
+
 		// Pick the top candidate and check if it can be processed.
 		next := candidates[0]
 		candidates = candidates[1:]
@@ -753,6 +759,29 @@ func sortPartition3(partition []transaction, _ ...tieBreaker) []transaction {
 		}
 	}
 
+	return res
+}
+
+func filterUnreachable(tx []transaction, nonces state) []transaction {
+	releases := map[action]unit{}
+	for _, tx := range tx {
+		releases[tx.main] = unit{}
+		for _, a := range tx.auth {
+			releases[a] = unit{}
+		}
+	}
+
+	res := []transaction{}
+	for _, tx := range tx {
+		if nonces[tx.main.sender] == tx.main.nonce {
+			res = append(res, tx)
+			continue
+		}
+		requirement := action{tx.main.sender, tx.main.nonce - 1}
+		if _, found := releases[requirement]; found {
+			res = append(res, tx)
+		}
+	}
 	return res
 }
 
@@ -799,11 +828,10 @@ func evaluate(
 	}
 
 	for _, a := range tx.auth {
-		if a == tx.main {
-			continue
-		}
 		if _, found := pending[a]; found {
-			value.numAuthorizationsCollidingWithPendingTransactions++
+			if a.nonce == nonces[a.sender] {
+				value.numAuthorizationsCollidingWithPendingTransactions++
+			}
 		}
 		if a.nonce > nonces[a.sender] {
 			value.numBlockedAuthorizations++
