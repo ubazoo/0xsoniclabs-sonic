@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"iter"
 	"maps"
+	"math/rand/v2"
 	"slices"
 )
 
@@ -935,6 +936,10 @@ func interleavePartitions1[T any](partition [][]T) []T {
 }
 
 func interleavePartitions2[T any](partition [][]T) []T {
+	return interleavePartitions2WithSeed(0, partition)
+}
+
+func interleavePartitions2WithSeed[T any](seed uint64, partition [][]T) []T {
 
 	// Step 1: Create a list of proxies that represent the partitions.
 	numTransactions := 0
@@ -954,12 +959,15 @@ func interleavePartitions2[T any](partition [][]T) []T {
 		}
 	}
 
+	rand := xorShiftStar{}
+	rand.seed(seed)
+
 	// Step2: Shuffle the proxies.
 	// This is an implementation of the Fisher-Yates shuffle algorithm.
 	// See: https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
 	// This loop is O(|transactions|).
 	for i := len(proxies) - 1; i > 0; i-- {
-		j := 0 // TODO: add random source here, picking a number in [0, i) uniformly
+		j := rand.randN(uint64(i + 1)) // TODO: add random source here, picking a number in [0, i) uniformly
 		proxies[i], proxies[j] = proxies[j], proxies[i]
 	}
 
@@ -975,6 +983,11 @@ func interleavePartitions2[T any](partition [][]T) []T {
 }
 
 func interleavePartitions3[T any](partition [][]T) []T {
+	seed := uint64(0xaaAAaaAAaa) // TODO: add random seed here
+	return interleavePartitions3WithSeed(seed, partition)
+}
+
+func interleavePartitions3WithSeed[T any](seed uint64, partition [][]T) []T {
 
 	// This implementation determines the random order of interleaving by
 	// through the following algorithm:
@@ -1002,11 +1015,10 @@ func interleavePartitions3[T any](partition [][]T) []T {
 		part int
 	}
 	proxies := make([]proxy, 0, numTransactions)
-	seed := uint(0xaaAAaaAAaa) // TODO: add random seed here
 	// This loop nest is O(|transactions|).
 	for i, part := range partition {
 		for range len(part) {
-			pos := uint(len(proxies)) ^ seed
+			pos := uint(len(proxies)) ^ uint(seed)
 			proxies = append(proxies, proxy{pos, i})
 		}
 	}
@@ -1027,4 +1039,85 @@ func interleavePartitions3[T any](partition [][]T) []T {
 		partition[proxy.part] = partition[proxy.part][1:]
 	}
 	return res
+}
+
+func interleavePartitions4[T any](partition [][]T) []T {
+	return interleavePartitions4WithSeed(0, partition)
+}
+
+// Use rand library for random number generation.
+func interleavePartitions4WithSeed[T any](seed uint64, partition [][]T) []T {
+	numTransactions := 0
+	// This loop is O(|partition|) = O(|transactions|).
+	for _, part := range partition {
+		numTransactions += len(part)
+	}
+	if numTransactions == 0 {
+		return nil
+	}
+
+	idxs := rand.Perm(numTransactions)
+
+	type proxy struct {
+		pos  int
+		part int
+	}
+	proxies := make([]proxy, 0, numTransactions)
+
+	// This loop nest is O(|transactions|).
+	for i, part := range partition {
+		for range len(part) {
+			proxies = append(proxies, proxy{idxs[i], i})
+		}
+	}
+
+	slices.SortFunc(proxies, func(a, b proxy) int {
+		return cmp.Compare(a.pos, b.pos)
+	})
+
+	res := make([]T, 0, numTransactions)
+	// This loop is O(|transactions|).
+	for _, proxy := range proxies {
+		res = append(res, partition[proxy.part][0])
+		partition[proxy.part] = partition[proxy.part][1:]
+	}
+	return res
+}
+
+type xorShiftStar struct {
+	state uint64
+}
+
+// seed initializes the xorShiftStar random number generator with the given seed.
+// seed must be non-zero.
+func (x *xorShiftStar) seed(seed uint64) {
+	x.state = seed
+}
+
+// next returns the next random number using the xorshift* algorithm.
+// Based on https://en.wikipedia.org/wiki/Xorshift#xorshift*
+func (x *xorShiftStar) next() uint64 {
+	const factor = uint64(0x2545F4914F6CDD1D)
+	rand := x.state
+	rand ^= rand >> 12
+	rand ^= rand << 25
+	rand ^= rand >> 27
+	x.state = rand
+	return rand * factor
+}
+
+// randN returns a random number in the range [0, n) using the xorshift* algorithm.
+// it removes the modulo bias
+func (x *xorShiftStar) randN(n uint64) uint64 {
+	// remove modulo bias
+	uint64Max := ^uint64(0)
+	var rand uint64
+	for {
+		rand = x.next()
+		// for small n, this will most likely be true in the first iteration
+		if rand < (uint64Max - (uint64Max % n)) {
+			break
+		}
+	}
+	return rand % n
 }

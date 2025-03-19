@@ -1,6 +1,7 @@
 package scrambler
 
 import (
+	"cmp"
 	"fmt"
 	"iter"
 	"reflect"
@@ -890,4 +891,120 @@ func permute[T any](elements []T) iter.Seq[[]T] {
 			}
 		}
 	}
+}
+
+func TestPermutationIsUniform_XorSortIsNotUniform(t *testing.T) {
+	n := 3
+	numPermutations := fac(n)
+	seeds := make([]int, numPermutations)
+	for i := range seeds {
+		seeds[i] = i
+	}
+
+	type pair struct {
+		idx  int
+		elem rune
+	}
+
+	permutations := map[string]struct{}{}
+	for _, seed := range seeds {
+		input := make([]pair, n)
+		for i := range input {
+			input[i] = pair{i, 'A' + rune(i)}
+		}
+
+		for i := range input {
+			input[i].idx = input[i].idx ^ seed
+		}
+
+		slices.SortFunc(input, func(i, j pair) int {
+			return cmp.Compare(i.idx, j.idx)
+		})
+
+		out := make([]rune, n)
+		for i := range input {
+			out[i] = input[i].elem
+		}
+
+		t.Log(seed, ": ", string(out))
+		permutations[string(out)] = struct{}{}
+	}
+
+	if len(permutations) != numPermutations {
+		t.Fatalf("Missing permutations, only got %v", permutations)
+	}
+}
+
+func TestPermutationIsUniform(t *testing.T) {
+	n := 4
+	numPermutations := fac(n)
+	seeds := make([]int, numPermutations)
+	for i := range seeds {
+		seeds[i] = i
+	}
+
+	permutations := map[string]struct{}{}
+	for _, seed := range seeds {
+		input := [][]rune{}
+		for i := range n {
+			input = append(input, []rune{'A' + rune(i)})
+		}
+		out := interleavePartitions2WithSeed(uint64(seed), input) // uses xorshift* internally
+		// out := interleavePartitions3WithSeed(uint64(seed), input) // xor idx then sort
+		// out := interleavePartitions4WithSeed(uint64(seed), input) // uses rand.Perm internally
+		permutations[string(out)] = struct{}{}
+	}
+
+	if len(permutations) != numPermutations {
+		t.Fatalf("Missing permutations, only got %d of %d: %v", len(permutations), numPermutations, permutations)
+	}
+}
+
+func TestPermutationIsUniform_ActualPermutationCoversAll(t *testing.T) {
+	n := 3
+	numPermutations := fac(n)
+
+	permutations := map[string]struct{}{}
+
+	input := []rune{}
+	for i := range n {
+		input = append(input, 'A'+rune(i))
+	}
+
+	for o := range permute(input) {
+		t.Log(string(o))
+		permutations[string(o)] = struct{}{}
+	}
+
+	if len(permutations) != numPermutations {
+		t.Fatalf("Missing permutations, only got %v", permutations)
+	}
+}
+
+func fac(n int) int {
+	if n == 0 {
+		return 1
+	}
+	return n * fac(n-1)
+}
+
+func TestPseudoRandomNumberGenerator_OutputIsEquidistributed(t *testing.T) {
+	rnd := xorShiftStar{}
+	rnd.seed(1)
+
+	n := 1000000
+	seenXor := map[uint64]struct{}{}
+	seenRand := map[uint64]struct{}{}
+	for range n {
+		seenXor[rnd.randN(uint64(n))] = struct{}{}
+		seenRand[rnd.randN(uint64(n))] = struct{}{}
+	}
+
+	if len(seenXor) < len(seenRand)*99/100 {
+		t.Fatalf("Homemade rand is not within 1 percent of rand library: %d vs. %d", len(seenXor), len(seenRand))
+	}
+
+	// if len(seenRand) < n {
+	// 	t.Fatalf("not all numbers were generated %d", len(seenRand))
+	// }
 }
