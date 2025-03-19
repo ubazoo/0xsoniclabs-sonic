@@ -51,7 +51,7 @@ type provider interface {
 	// Returns:
 	// - WitnessProof: witness proof for the account info.
 	// - error: Not nil if the provider failed to obtain the requested account info.
-	GetAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error)
+	getAccountProof(address common.Address, height idx.Block) (carmen.WitnessProof, error)
 
 	// Close closes the Provider.
 	// Closing an already closed provider has no effect

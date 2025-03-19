@@ -59,15 +59,15 @@ func (c *LightClient) Sync() (idx.Block, error) {
 // It returns an error if the balance could not be proven or there was any error
 // in getting or verifying the proof.
 func (c *LightClient) GetBalance(address common.Address) (*uint256.Int, error) {
-	getBalanceFromProof := func(proof carmen.WitnessProof, address common.Address,
-		rootHash common.Hash) (carmen.Amount, bool, error) {
-		balanceAmount, proven, err := proof.GetBalance(carmen.Hash(rootHash), carmen.Address(address))
-		if err != nil {
-			return carmen.NewAmount(0), false, fmt.Errorf("failed to get balance from proof: %w", err)
-		}
-		return balanceAmount, proven, nil
-	}
-	balance, err := getInfoFromProof(address, c, "balance", getBalanceFromProof)
+	balance, err := getInfoFromProof(
+		address,
+		c,
+		"balance",
+		func(proof carmen.WitnessProof, address common.Address,
+			rootHash common.Hash) (carmen.Amount, bool, error) {
+			return proof.GetBalance(carmen.Hash(rootHash), carmen.Address(address))
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -75,15 +75,16 @@ func (c *LightClient) GetBalance(address common.Address) (*uint256.Int, error) {
 	return &balanceInt, nil
 }
 
-// GetBalance is a helper function that attempts a sync and returns the proof
-// of the given address.
-func (c *LightClient) getAccountInfo(address common.Address) (carmen.WitnessProof, error) {
+// getAccountProof is a helper function that syncs and returns the proof
+// for the given address.
+// It returns an error if sync failed, the proof could not be obtained or verified.
+func (c *LightClient) getAccountProof(address common.Address) (carmen.WitnessProof, error) {
 	// always sync before querying
 	_, err := c.Sync()
 	if err != nil {
 		return nil, fmt.Errorf("failed to sync: %w", err)
 	}
-	proof, err := c.provider.GetAccountProof(address, provider.LatestBlock)
+	proof, err := c.provider.getAccountProof(address, LatestBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get account info: %w", err)
 	}
@@ -97,25 +98,26 @@ func (c *LightClient) getAccountInfo(address common.Address) (carmen.WitnessProo
 	return proof, nil
 }
 
-// getInfoFromProof is a helper function takes an address and a function that
-// takes a proof and returns the desired information.
+// getInfoFromProof is a helper function takes an address and a function, which
+// takes a proof, address and hash, and returns the desired information.
 func getInfoFromProof[T any](address common.Address, c *LightClient, valueName string,
 	f func(carmen.WitnessProof, common.Address, common.Hash) (T, bool, error)) (T, error) {
-	proof, err := c.getAccountInfo(address)
+	proof, err := c.getAccountProof(address)
 	var zeroValue T
 	if err != nil {
 		return zeroValue, fmt.Errorf("failed to get account info: %w", err)
 	}
 	// it is safe to ignore the hasSynced flag here because if there was an error
 	// during sync, it would have triggered an early return.
-	rootHash, _ := c.state.StateRoot()
+	rootHash, _ := c.state.stateRoot()
 	value, proven, err := f(proof, address, rootHash)
 	if err != nil {
-		return zeroValue, err
+		return zeroValue, fmt.Errorf("failed to get %v from proof: %w", valueName, err)
 	}
 	if !proven {
-		return zeroValue, fmt.Errorf("%v could not be proven from the proof and state root hash",
-			valueName)
+		return zeroValue,
+			fmt.Errorf("%v could not be proven from the proof and state root hash",
+				valueName)
 	}
 	return value, err
 }

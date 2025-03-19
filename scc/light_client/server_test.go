@@ -336,8 +336,8 @@ func TestServer_GetCertificates_ReturnsCertificates(t *testing.T) {
 func TestBlockQuery_GetAccountProof_PropagatesClientError(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	client := NewMockRpcClient(ctrl)
-	server, err := NewServerFromClient(client)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
 	require.NoError(err)
 
 	someError := fmt.Errorf("some error")
@@ -350,7 +350,7 @@ func TestBlockQuery_GetAccountProof_PropagatesClientError(t *testing.T) {
 		"latest").
 		Return(someError)
 
-	_, err = server.GetAccountProof(addr, math.MaxUint64)
+	_, err = server.getAccountProof(addr, math.MaxUint64)
 	require.ErrorIs(err, someError)
 }
 
@@ -358,8 +358,8 @@ func TestBlockQuery_GetAccountProof_FailsToDecodeAddressProof(t *testing.T) {
 	// setup
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	client := NewMockRpcClient(ctrl)
-	server, err := NewServerFromClient(client)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
 	require.NoError(err)
 	// expexted error
 	addr := common.Address{0x1}
@@ -377,7 +377,7 @@ func TestBlockQuery_GetAccountProof_FailsToDecodeAddressProof(t *testing.T) {
 			return nil
 		})
 
-	got, err := server.GetAccountProof(addr, math.MaxUint64)
+	got, err := server.getAccountProof(addr, math.MaxUint64)
 	require.ErrorContains(err, "failed to decode proof element")
 	require.Nil(got)
 }
@@ -385,8 +385,8 @@ func TestBlockQuery_GetAccountProof_FailsToDecodeAddressProof(t *testing.T) {
 func TestBlockQuery_GetAccountProof_ReturnsAccountProof(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	client := NewMockRpcClient(ctrl)
-	server, err := NewServerFromClient(client)
+	client := NewMockrpcClient(ctrl)
+	server, err := newServerFromClient(client)
 	require.NoError(err)
 	addr := common.Address{0x1}
 	client.EXPECT().Call(
@@ -402,7 +402,7 @@ func TestBlockQuery_GetAccountProof_ReturnsAccountProof(t *testing.T) {
 			return nil
 		})
 
-	got, err := server.GetAccountProof(addr, math.MaxUint64)
+	got, err := server.getAccountProof(addr, math.MaxUint64)
 	require.NoError(err)
 	require.NotNil(got)
 }

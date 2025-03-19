@@ -145,14 +145,14 @@ func TestLightClientState_Sync_UpdatesStateToHead(t *testing.T) {
 	require.Equal(blockNumber, head)
 }
 
-func TestLightClient_GetAccountProof_ReportsErrorOnSyncFailure(t *testing.T) {
+func TestLightClient_getAccountInfo_ReportsErrorOnSyncFailure(t *testing.T) {
 	// setup
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
-	prov := NewMockProvider(ctrl)
+	prov := NewMockprovider(ctrl)
 
 	// expect
-	prov.EXPECT().GetBlockCertificates(LatestBlock, uint64(1)).
+	prov.EXPECT().getBlockCertificates(LatestBlock, uint64(1)).
 		Return(nil, fmt.Errorf("failed to sync"))
 
 	// build client
@@ -161,11 +161,11 @@ func TestLightClient_GetAccountProof_ReportsErrorOnSyncFailure(t *testing.T) {
 	c.provider = prov
 
 	// check
-	_, err = c.GetBalance(common.Address{0x01})
+	_, err = c.getAccountProof(common.Address{0x01})
 	require.ErrorContains(err, "failed to sync")
 }
 
-func TestLightClient_GetAccountProof_ReportsErrorsFrom(t *testing.T) {
+func TestLightClient_getAccountInfo_ReportsErrorsFrom(t *testing.T) {
 	require := require.New(t)
 	address := common.Address{0x01}
 
@@ -175,22 +175,22 @@ func TestLightClient_GetAccountProof_ReportsErrorsFrom(t *testing.T) {
 	}{
 		"ProviderError": {
 			mockProvider: func(prov *Mockprovider) {
-				prov.EXPECT().GetAccountProof(address, idx.Block(LatestBlock)).
+				prov.EXPECT().getAccountProof(address, idx.Block(LatestBlock)).
 					Return(nil, fmt.Errorf("some error"))
 			},
 			expectedErr: "failed to get account info",
 		},
 		"NilProof": {
-			mockProvider: func(prov *provider.Mockprovider) {
-				prov.EXPECT().GetAccountProof(address, idx.Block(LatestBlock)).
+			mockProvider: func(prov *Mockprovider) {
+				prov.EXPECT().getAccountProof(address, idx.Block(LatestBlock)).
 					Return(nil, nil)
 			},
 			expectedErr: "failed to get account proof",
 		},
 		"InvalidProof": {
-			mockProvider: func(prov *provider.Mockprovider) {
+			mockProvider: func(prov *Mockprovider) {
 				proof := carmen.CreateWitnessProofFromNodes(carmen.Bytes{})
-				prov.EXPECT().GetAccountProof(address, idx.Block(LatestBlock)).
+				prov.EXPECT().getAccountProof(address, idx.Block(LatestBlock)).
 					Return(proof, nil)
 			},
 			expectedErr: "failed to verify proof",
@@ -201,40 +201,40 @@ func TestLightClient_GetAccountProof_ReportsErrorsFrom(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			client, prov := setupForTestSync(t)
 			tt.mockProvider(prov)
-			_, err := client.getAccountInfo(address)
+			_, err := client.getAccountProof(address)
 			require.ErrorContains(err, tt.expectedErr)
 		})
 	}
 }
 
-func TestLightClient_GetAccountProof_ReturnsProof(t *testing.T) {
+func TestLightClient_getAccountInfo_ReturnsProof(t *testing.T) {
 	require := require.New(t)
 	client, prov := setupForTestSync(t)
 
 	want := carmen.CreateWitnessProofFromNodes()
-	prov.EXPECT().GetAccountProof(common.Address{0x01}, idx.Block(LatestBlock)).
+	prov.EXPECT().getAccountProof(common.Address{0x01}, idx.Block(LatestBlock)).
 		Return(want, nil)
 
-	got, err := client.getAccountInfo(common.Address{0x01})
+	got, err := client.getAccountProof(common.Address{0x01})
 	require.NoError(err)
 	require.Equal(want, got)
 }
 
 func TestLightClient_GetBalance_PropagatesErrorFrom(t *testing.T) {
 	tests := map[string]struct {
-		mockExpect  func(*provider.Mockprovider, *carmen.MockWitnessProof)
+		mockExpect  func(*Mockprovider, *carmen.MockWitnessProof)
 		expectedErr string
 	}{
 		"getAccountInfo": {
-			mockExpect: func(prov *provider.Mockprovider, _ *carmen.MockWitnessProof) {
-				prov.EXPECT().GetAccountProof(gomock.Any(), gomock.Any()).
+			mockExpect: func(prov *Mockprovider, _ *carmen.MockWitnessProof) {
+				prov.EXPECT().getAccountProof(gomock.Any(), gomock.Any()).
 					Return(nil, fmt.Errorf("some error"))
 			},
 			expectedErr: "failed to get account info",
 		},
 		"getBalance": {
-			mockExpect: func(prov *provider.Mockprovider, proof *carmen.MockWitnessProof) {
-				prov.EXPECT().GetAccountProof(gomock.Any(), idx.Block(LatestBlock)).
+			mockExpect: func(prov *Mockprovider, proof *carmen.MockWitnessProof) {
+				prov.EXPECT().getAccountProof(gomock.Any(), idx.Block(LatestBlock)).
 					Return(proof, nil)
 				proof.EXPECT().IsValid().Return(true)
 				proof.EXPECT().GetBalance(gomock.Any(), gomock.Any()).
@@ -243,8 +243,8 @@ func TestLightClient_GetBalance_PropagatesErrorFrom(t *testing.T) {
 			expectedErr: "failed to get balance from proof",
 		},
 		"balanceNotProven": {
-			mockExpect: func(prov *provider.Mockprovider, proof *carmen.MockWitnessProof) {
-				prov.EXPECT().GetAccountProof(gomock.Any(), idx.Block(LatestBlock)).
+			mockExpect: func(prov *Mockprovider, proof *carmen.MockWitnessProof) {
+				prov.EXPECT().getAccountProof(gomock.Any(), idx.Block(LatestBlock)).
 					Return(proof, nil)
 				proof.EXPECT().IsValid().Return(true)
 				proof.EXPECT().GetBalance(gomock.Any(), gomock.Any()).
@@ -281,7 +281,7 @@ func TestLightClient_GetBalance_ReturnsBalance(t *testing.T) {
 		Return(carmen.NewAmountFromUint256(wantBalance), true, nil)
 
 	// setup rpc provider to return proof
-	prov.EXPECT().GetAccountProof(common.Address{0x01}, idx.Block(LatestBlock)).
+	prov.EXPECT().getAccountProof(common.Address{0x01}, idx.Block(LatestBlock)).
 		Return(proof, nil)
 
 	// get balance function receives the proof and uses the state root to verify
@@ -346,19 +346,19 @@ func setupCommitteeCertificate(t *testing.T, key bls.PrivateKey) cert.CommitteeC
 }
 
 // mockProviderResponses mocks the provider responses for block and committee certificates
-func mockProviderResponses(prov *provider.Mockprovider, blockCert cert.BlockCertificate, committeeCert cert.CommitteeCertificate) {
+func mockProviderResponses(prov *Mockprovider, blockCert cert.BlockCertificate, committeeCert cert.CommitteeCertificate) {
 	prov.EXPECT().
-		GetBlockCertificates(LatestBlock, uint64(1)).
+		getBlockCertificates(LatestBlock, uint64(1)).
 		Return([]cert.BlockCertificate{blockCert}, nil)
 
 	prov.EXPECT().
-		GetCommitteeCertificates(scc.Period(1), uint64(1)).
+		getCommitteeCertificates(scc.Period(1), uint64(1)).
 		Return([]cert.CommitteeCertificate{committeeCert}, nil)
 }
 
 // setupLightClient creates a LightClient with a committee member based on
 // the given key and a used the given provider for the client.
-func setupLightClient(prov *provider.Mockprovider, key bls.PrivateKey) (*LightClient, error) {
+func setupLightClient(prov *Mockprovider, key bls.PrivateKey) (*LightClient, error) {
 	url, _ := url.Parse("http://localhost:4242")
 	config := Config{
 		Url:     url,
@@ -377,9 +377,9 @@ func setupLightClient(prov *provider.Mockprovider, key bls.PrivateKey) (*LightCl
 // successful sync test.
 // - sets up a mock provider that will return valid block/committee certificates
 // Returns the client
-func setupForTestSync(t *testing.T) (*LightClient, *provider.Mockprovider) {
+func setupForTestSync(t *testing.T) (*LightClient, *Mockprovider) {
 	ctrl := gomock.NewController(t)
-	prov := provider.NewMockProvider(ctrl)
+	prov := NewMockprovider(ctrl)
 
 	key := bls.NewPrivateKey()
 	blockCert, _ := setupBlockCertificate(t, key)
