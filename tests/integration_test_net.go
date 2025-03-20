@@ -21,6 +21,7 @@ import (
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/0xsoniclabs/sonic/scc"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -98,6 +99,8 @@ type IntegrationTestNet struct {
 
 	sessionsMutex sync.Mutex
 	Session
+
+	genesisCommittee *scc.Committee
 }
 
 // per-node state for the integration test network
@@ -193,6 +196,10 @@ func StartIntegrationTestNetWithJsonGenesis(
 	if err != nil {
 		t.Fatal("failed to start integration test network: ", err)
 	}
+	// This is sufficient for now. If the json genesis in the future hold
+	// only keys and voting power instead of committee or members, then here the
+	// committee should be built and set to the genesis committee.
+	net.genesisCommittee = jsonGenesis.GenesisCommittee
 	return net
 }
 
@@ -449,6 +456,10 @@ func (n *IntegrationTestNet) GetDirectory() string {
 // GetJsonRpcPort returns the JSON-RPC port of the first node in the network.
 func (n *IntegrationTestNet) GetJsonRpcPort() int {
 	return n.nodes[0].httpPort
+}
+
+func (n *IntegrationTestNet) GetGenesisCommittee() *scc.Committee {
+	return n.genesisCommittee
 }
 
 // RestartWithExportImport stops the network, exports the genesis file, cleans the

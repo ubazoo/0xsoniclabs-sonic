@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"net/url"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/tests"
@@ -115,6 +116,36 @@ func TestServer_CanRequestMaxNumberOfResults(t *testing.T) {
 		require.NoError(err)
 		require.NotZero(len(blockCerts))
 	}
+}
+
+func TestLightClient_CanSync(t *testing.T) {
+	require := require.New(t)
+
+	// start network
+	net := tests.StartIntegrationTestNet(t)
+	netAddress := fmt.Sprintf("http://localhost:%d", net.GetJsonRpcPort())
+
+	// make config
+	u, err := url.Parse(netAddress)
+	require.NoError(err)
+	config := Config{
+		Url:     u,
+		Genesis: *net.GetGenesisCommittee(),
+	}
+
+	// make light client
+	lightClient, err := NewLightClient(config)
+	require.NoError(err)
+	t.Cleanup(lightClient.Close)
+
+	// sync
+	// TODO: Enable this verification once the client uses the genesis committee
+	// to sign block certificates.
+	// WIP: https://github.com/0xsoniclabs/sonic/pull/90
+	_, err = lightClient.Sync()
+	// TODO: change this check to NoError once the client signs initial blocks.
+	require.ErrorContains(err, "insufficient voting power")
+	// require.Equal(netHead, head)
 }
 
 ////////////////////////////////////////
