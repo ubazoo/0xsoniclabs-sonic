@@ -128,14 +128,27 @@ func (p *DriverTxTransactor) PopInternalTxs(_ iblockproc.BlockCtx, _ iblockproc.
 	return internalTxs
 }
 
-func (p *DriverTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID) {
+func (p *DriverTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt, originator idx.ValidatorID, baseFee *big.Int, blobBaseFee *big.Int) {
 	if originator == 0 {
 		return
 	}
 	originatorIdx := p.es.Validators.GetIdx(originator)
 
 	// track originated fee
-	txFee := new(big.Int).Mul(new(big.Int).SetUint64(r.GasUsed), tx.GasPrice())
+	var gasPrice *big.Int
+	if p.es.Rules.Upgrades.Allegro {
+		gasPrice = effectiveGasPrice(tx, baseFee)
+	} else {
+		gasPrice = tx.GasPrice()
+	}
+	txFee := new(big.Int).Mul(new(big.Int).SetUint64(r.GasUsed), gasPrice)
+
+	if r.BlobGasUsed != 0 && blobBaseFee != nil {
+		blobFee := new(big.Int).SetUint64(r.BlobGasUsed)
+		blobFee.Mul(blobFee, blobBaseFee)
+		txFee.Add(txFee, blobFee)
+	}
+
 	originated := p.bs.ValidatorStates[originatorIdx].Originated
 	originated.Add(originated, txFee)
 
@@ -144,6 +157,13 @@ func (p *DriverTxListener) OnNewReceipt(tx *types.Transaction, r *types.Receipt,
 	if notUsedGas != 0 {
 		p.bs.ValidatorStates[originatorIdx].DirtyGasRefund += notUsedGas
 	}
+}
+
+func effectiveGasPrice(tx *types.Transaction, baseFee *big.Int) *big.Int {
+	if baseFee == nil {
+		return tx.GasPrice()
+	}
+	return new(big.Int).Add(baseFee, tx.EffectiveGasTipValue(baseFee))
 }
 
 func decodeDataBytes(l *types.Log) ([]byte, error) {
