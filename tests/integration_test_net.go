@@ -78,6 +78,8 @@ type IntegrationTestNetOptions struct {
 	// will not be saved into the toml file, modifications will be ignored.
 	// Zero value means no modification.
 	ModifyConfig func(*config.Config)
+	// Accounts to be deployed with the genesis.
+	Accounts []makefakegenesis.Account
 }
 
 // IntegrationTestNet is a in-process test network for integration tests. When
@@ -145,6 +147,10 @@ func StartIntegrationTestNetWithFakeGenesis(
 		t.Fatal("failed to validate and sanitize options: ", err)
 	}
 
+	if len(effectiveOptions.Accounts) != 0 {
+		t.Fatal("fake genesis does not support custom accounts")
+	}
+
 	net, err := startIntegrationTestNet(
 		t,
 		t.TempDir(),
@@ -176,6 +182,8 @@ func StartIntegrationTestNetWithJsonGenesis(
 		effectiveOptions.NumNodes,
 		effectiveOptions.FeatureSet,
 	)
+
+	jsonGenesis.Accounts = append(jsonGenesis.Accounts, effectiveOptions.Accounts...)
 
 	// Speed up the block generation time to reduce test time.
 	jsonGenesis.Rules.Emitter.Interval = inter.Timestamp(time.Millisecond)
