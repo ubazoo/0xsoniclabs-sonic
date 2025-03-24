@@ -62,6 +62,8 @@ type EventPayloadI interface {
 	MisbehaviourProofs() []MisbehaviourProof
 
 	// Fields for the Certification Chain
+	// TODO: add fields for nextBlockToSign and nextCommitteeToSign to facilitate
+	// the state-less verification of an event; all that is needed is the self-parent
 	BlockSignatures() []BlockSignature
 	CommitteeSignatures() []CommitteeSignature
 }
