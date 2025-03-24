@@ -98,18 +98,30 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 		withdrawalsHash = &types.EmptyWithdrawalsHash
 	}
 
+	var parentBeaconRoot *common.Hash = nil
+	if p.net.Upgrades.Allegro {
+		parentBeaconRoot = &common.Hash{}
+	}
+
+	var requestsHash *common.Hash = nil
+	if p.net.Upgrades.Allegro {
+		requestsHash = &types.EmptyRequestsHash
+	}
+
 	h := &evmcore.EvmHeader{
-		Number:          p.blockIdx,
-		ParentHash:      p.prevBlockHash,
-		Root:            common.Hash{},
-		Time:            p.block.Time,
-		Coinbase:        common.Address{},
-		GasLimit:        p.net.Blocks.MaxBlockGas,
-		GasUsed:         p.gasUsed,
-		BaseFee:         baseFee,
-		PrevRandao:      prevRandao,
-		WithdrawalsHash: withdrawalsHash,
-		Epoch:           p.block.Atropos.Epoch(),
+		Number:           p.blockIdx,
+		ParentHash:       p.prevBlockHash,
+		Root:             common.Hash{},
+		Time:             p.block.Time,
+		Coinbase:         common.Address{},
+		GasLimit:         p.net.Blocks.MaxBlockGas,
+		GasUsed:          p.gasUsed,
+		BaseFee:          baseFee,
+		PrevRandao:       prevRandao,
+		WithdrawalsHash:  withdrawalsHash,
+		Epoch:            p.block.Atropos.Epoch(),
+		ParentBeaconRoot: parentBeaconRoot,
+		RequestsHash:     requestsHash,
 	}
 
 	return evmcore.NewEvmBlock(h, txs)

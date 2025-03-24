@@ -54,6 +54,11 @@ type (
 		PrevRandao common.Hash // == mixHash/mixDigest
 
 		Epoch idx.Epoch
+
+		// ParentBeaconRoot is a hash from eth consensus, but it's not used in Lachesis.
+		ParentBeaconRoot *common.Hash
+		// RequestsHash is a hash of all non-empty requests in the block.
+		RequestsHash *common.Hash
 	}
 
 	EvmBlock struct {
@@ -98,19 +103,33 @@ func ToEvmHeader(block *inter.Block, prevHash common.Hash, rules opera.Rules) *E
 		withdrawalsHash = &types.EmptyWithdrawalsHash
 	}
 
+	var parentBeaconBlockRoot *common.Hash = nil
+	if rules.Upgrades.Allegro {
+		parentBeaconBlockRoot = &common.Hash{}
+	}
+
+	var requestsHash *common.Hash = nil
+	if rules.Upgrades.Allegro {
+		// NOTE: for now this is a placeholder, since there is no real use of
+		// requests hash in the current implementation.
+		requestsHash = &types.EmptyRequestsHash
+	}
+
 	return &EvmHeader{
-		Hash:            block.Hash(),
-		ParentHash:      prevHash,
-		Root:            block.StateRoot,
-		Number:          big.NewInt(int64(block.Number)),
-		Time:            block.Time,
-		Duration:        time.Duration(block.Duration) * time.Nanosecond,
-		GasLimit:        block.GasLimit,
-		GasUsed:         block.GasUsed,
-		BaseFee:         baseFee,
-		PrevRandao:      prevRandao,
-		WithdrawalsHash: withdrawalsHash,
-		Epoch:           block.Epoch,
+		Hash:             block.Hash(),
+		ParentHash:       prevHash,
+		Root:             block.StateRoot,
+		Number:           big.NewInt(int64(block.Number)),
+		Time:             block.Time,
+		Duration:         time.Duration(block.Duration) * time.Nanosecond,
+		GasLimit:         block.GasLimit,
+		GasUsed:          block.GasUsed,
+		BaseFee:          baseFee,
+		PrevRandao:       prevRandao,
+		WithdrawalsHash:  withdrawalsHash,
+		Epoch:            block.Epoch,
+		ParentBeaconRoot: parentBeaconBlockRoot,
+		RequestsHash:     requestsHash,
 	}
 }
 
@@ -118,18 +137,20 @@ func ToEvmHeader(block *inter.Block, prevHash common.Hash, rules opera.Rules) *E
 func ConvertFromEthHeader(h *types.Header) *EvmHeader {
 	// NOTE: incomplete conversion
 	return &EvmHeader{
-		Number:          h.Number,
-		Coinbase:        h.Coinbase,
-		GasLimit:        math.MaxUint64,
-		GasUsed:         h.GasUsed,
-		Root:            h.Root,
-		TxHash:          h.TxHash,
-		ParentHash:      h.ParentHash,
-		Time:            inter.FromUnix(int64(h.Time)),
-		Hash:            common.BytesToHash(h.Extra),
-		BaseFee:         h.BaseFee,
-		PrevRandao:      h.MixDigest,
-		WithdrawalsHash: h.WithdrawalsHash,
+		Number:           h.Number,
+		Coinbase:         h.Coinbase,
+		GasLimit:         math.MaxUint64,
+		GasUsed:          h.GasUsed,
+		Root:             h.Root,
+		TxHash:           h.TxHash,
+		ParentHash:       h.ParentHash,
+		Time:             inter.FromUnix(int64(h.Time)),
+		Hash:             common.BytesToHash(h.Extra),
+		BaseFee:          h.BaseFee,
+		PrevRandao:       h.MixDigest,
+		WithdrawalsHash:  h.WithdrawalsHash,
+		ParentBeaconRoot: h.ParentBeaconRoot,
+		RequestsHash:     h.RequestsHash,
 	}
 }
 
@@ -154,7 +175,9 @@ func (h *EvmHeader) EthHeader() *types.Header {
 		Difficulty: new(big.Int),
 		MixDigest:  h.PrevRandao,
 
-		WithdrawalsHash: h.WithdrawalsHash,
+		WithdrawalsHash:  h.WithdrawalsHash,
+		ParentBeaconRoot: h.ParentBeaconRoot,
+		RequestsHash:     h.RequestsHash,
 	}
 	// ethHeader.SetExternalHash(h.Hash) < this seems to be an optimization in go-ethereum-substate; skipped for now, needs investigation
 	return ethHeader
@@ -162,29 +185,31 @@ func (h *EvmHeader) EthHeader() *types.Header {
 
 // EvmHeaderJson is simplified version of types.Header, but allowing setting custom hash
 type EvmHeaderJson struct {
-	ParentHash      common.Hash      `json:"parentHash"       gencodec:"required"`
-	UncleHash       common.Hash      `json:"sha3Uncles"       gencodec:"required"`
-	Miner           common.Address   `json:"miner"`
-	Root            common.Hash      `json:"stateRoot"        gencodec:"required"`
-	TxHash          common.Hash      `json:"transactionsRoot" gencodec:"required"`
-	ReceiptHash     common.Hash      `json:"receiptsRoot"     gencodec:"required"`
-	Bloom           types.Bloom      `json:"logsBloom"        gencodec:"required"`
-	Difficulty      *hexutil.Big     `json:"difficulty"       gencodec:"required"`
-	Number          *hexutil.Big     `json:"number"           gencodec:"required"`
-	GasLimit        hexutil.Uint64   `json:"gasLimit"         gencodec:"required"`
-	GasUsed         hexutil.Uint64   `json:"gasUsed"          gencodec:"required"`
-	Time            hexutil.Uint64   `json:"timestamp"        gencodec:"required"`
-	TimeNano        hexutil.Uint64   `json:"timestampNano"`
-	Extra           hexutil.Bytes    `json:"extraData"        gencodec:"required"`
-	PrevRandao      common.Hash      `json:"mixHash"`
-	Nonce           types.BlockNonce `json:"nonce"`
-	BaseFee         *hexutil.Big     `json:"baseFeePerGas"`
-	Hash            *common.Hash     `json:"hash"`
-	Epoch           hexutil.Uint64   `json:"epoch"`
-	TotalDiff       *hexutil.Big     `json:"totalDifficulty"`
-	WithdrawalsHash *common.Hash     `json:"withdrawalsRoot"`
-	BlobGasUsed     *hexutil.Uint64  `json:"blobGasUsed"`
-	ExcessBlobGas   *hexutil.Uint64  `json:"excessBlobGas"`
+	ParentHash       common.Hash      `json:"parentHash"       gencodec:"required"`
+	UncleHash        common.Hash      `json:"sha3Uncles"       gencodec:"required"`
+	Miner            common.Address   `json:"miner"`
+	Root             common.Hash      `json:"stateRoot"        gencodec:"required"`
+	TxHash           common.Hash      `json:"transactionsRoot" gencodec:"required"`
+	ReceiptHash      common.Hash      `json:"receiptsRoot"     gencodec:"required"`
+	Bloom            types.Bloom      `json:"logsBloom"        gencodec:"required"`
+	Difficulty       *hexutil.Big     `json:"difficulty"       gencodec:"required"`
+	Number           *hexutil.Big     `json:"number"           gencodec:"required"`
+	GasLimit         hexutil.Uint64   `json:"gasLimit"         gencodec:"required"`
+	GasUsed          hexutil.Uint64   `json:"gasUsed"          gencodec:"required"`
+	Time             hexutil.Uint64   `json:"timestamp"        gencodec:"required"`
+	TimeNano         hexutil.Uint64   `json:"timestampNano"`
+	Extra            hexutil.Bytes    `json:"extraData"        gencodec:"required"`
+	PrevRandao       common.Hash      `json:"mixHash"`
+	Nonce            types.BlockNonce `json:"nonce"`
+	BaseFee          *hexutil.Big     `json:"baseFeePerGas"`
+	Hash             *common.Hash     `json:"hash"`
+	Epoch            hexutil.Uint64   `json:"epoch"`
+	TotalDiff        *hexutil.Big     `json:"totalDifficulty"`
+	WithdrawalsHash  *common.Hash     `json:"withdrawalsRoot"`
+	BlobGasUsed      *hexutil.Uint64  `json:"blobGasUsed"`
+	ExcessBlobGas    *hexutil.Uint64  `json:"excessBlobGas"`
+	ParentBeaconRoot *common.Hash     `json:"parentBeaconBlockRoot"`
+	RequestsHash     *common.Hash     `json:"requestsHash"`
 }
 
 type EvmBlockJson struct {
@@ -196,26 +221,28 @@ type EvmBlockJson struct {
 
 func (h *EvmHeader) ToJson(receipts types.Receipts) *EvmHeaderJson {
 	enc := &EvmHeaderJson{
-		Number:          (*hexutil.Big)(h.Number),
-		Miner:           h.Coinbase,
-		GasLimit:        hexutil.Uint64(h.GasLimit),
-		GasUsed:         hexutil.Uint64(h.GasUsed),
-		Root:            h.Root,
-		TxHash:          h.TxHash,
-		ParentHash:      h.ParentHash,
-		UncleHash:       types.EmptyUncleHash,
-		Time:            hexutil.Uint64(h.Time.Unix()),
-		TimeNano:        hexutil.Uint64(h.Time),
-		Extra:           inter.EncodeExtraData(h.Time.Time(), h.Duration),
-		BaseFee:         (*hexutil.Big)(h.BaseFee),
-		Difficulty:      new(hexutil.Big),
-		PrevRandao:      h.PrevRandao,
-		TotalDiff:       new(hexutil.Big),
-		Hash:            &h.Hash,
-		Epoch:           (hexutil.Uint64)(h.Epoch),
-		WithdrawalsHash: h.WithdrawalsHash,
-		BlobGasUsed:     (*hexutil.Uint64)(new(uint64)),
-		ExcessBlobGas:   (*hexutil.Uint64)(new(uint64)),
+		Number:           (*hexutil.Big)(h.Number),
+		Miner:            h.Coinbase,
+		GasLimit:         hexutil.Uint64(h.GasLimit),
+		GasUsed:          hexutil.Uint64(h.GasUsed),
+		Root:             h.Root,
+		TxHash:           h.TxHash,
+		ParentHash:       h.ParentHash,
+		UncleHash:        types.EmptyUncleHash,
+		Time:             hexutil.Uint64(h.Time.Unix()),
+		TimeNano:         hexutil.Uint64(h.Time),
+		Extra:            inter.EncodeExtraData(h.Time.Time(), h.Duration),
+		BaseFee:          (*hexutil.Big)(h.BaseFee),
+		Difficulty:       new(hexutil.Big),
+		PrevRandao:       h.PrevRandao,
+		TotalDiff:        new(hexutil.Big),
+		Hash:             &h.Hash,
+		Epoch:            (hexutil.Uint64)(h.Epoch),
+		WithdrawalsHash:  h.WithdrawalsHash,
+		BlobGasUsed:      (*hexutil.Uint64)(new(uint64)),
+		ExcessBlobGas:    (*hexutil.Uint64)(new(uint64)),
+		ParentBeaconRoot: h.ParentBeaconRoot,
+		RequestsHash:     h.RequestsHash,
 	}
 	if receipts != nil { // if receipts resolution fails, don't set ReceiptsHash at all
 		if receipts.Len() != 0 {
