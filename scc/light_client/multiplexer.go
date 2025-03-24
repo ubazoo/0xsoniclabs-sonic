@@ -73,7 +73,7 @@ func (m *multiplexer) getBlockCertificates(first idx.Block, maxResults uint64) (
 	})
 }
 
-// tryAll executes a function on each provider in sequence until one returns nil error.
+// tryAll executes a function on each provider in sequence until one returns a nil error.
 //
 // This function is a generic helper that iterates over a list of providers,
 // calling the given function on each. If any function call succeeds, it immediately
@@ -84,7 +84,7 @@ func (m *multiplexer) getBlockCertificates(first idx.Block, maxResults uint64) (
 //
 // Parameters:
 //   - ps: A slice of provider instances to be tried.
-//   - fn: A function that takes a provider and returns a result of type T and an error.
+//   - fn: A function that takes a provider and returns a result of type C and an error.
 //
 // Returns:
 //   - C: The result of the first successful function execution.
