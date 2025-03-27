@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package evmcore
+package legacy
 
 import (
 	"math"
@@ -24,7 +24,9 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-// IntrinsicGas computes the 'intrinsic gas' for a message with the given data.
+// IntrinsicGas in the "github.com/0xsoniclabs/sonic/eventcheck/basiccheck/legacy"
+// package is a legacy implementation of core.IntrinsicGas utilized by clients
+// before Allegro hard-fork.
 func IntrinsicGas(data []byte, accessList types.AccessList, isContractCreation bool) (uint64, error) {
 	// Set the starting gas for the raw transaction
 	var gas uint64
@@ -50,7 +52,7 @@ func IntrinsicGas(data []byte, accessList types.AccessList, isContractCreation b
 
 		z := uint64(len(data)) - nz
 		if (math.MaxUint64-gas)/params.TxDataZeroGas < z {
-			return 0, ErrGasUintOverflow
+			return 0, vm.ErrGasUintOverflow
 		}
 		gas += z * params.TxDataZeroGas
 	}
