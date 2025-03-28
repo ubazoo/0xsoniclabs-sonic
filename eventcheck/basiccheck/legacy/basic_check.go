@@ -1,24 +1,27 @@
-package basiccheck
+package legacy
 
 import (
-	"math"
+	"errors"
 
-	base "github.com/Fantom-foundation/lachesis-base/eventcheck/basiccheck"
 	"github.com/ethereum/go-ethereum/core/types"
 
-	"github.com/0xsoniclabs/sonic/eventcheck/basiccheck/legacy"
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
-type LegacyChecker struct {
-	base base.Checker
+var (
+	ErrNegativeValue = errors.New("negative value")
+	ErrIntrinsicGas  = errors.New("intrinsic gas too low")
+	// ErrTipAboveFeeCap is a sanity error to ensure no one is able to specify a
+	// transaction with a tip higher than the total fee cap.
+	ErrTipAboveFeeCap = errors.New("max priority fee per gas higher than max fee per gas")
+)
+
+type BasicCheck struct {
 }
 
 // New validator which performs checks which don't require anything except event
-func NewLegacyChecker() *LegacyChecker {
-	return &LegacyChecker{
-		base: base.Checker{},
-	}
+func NewChecker() *BasicCheck {
+	return &BasicCheck{}
 }
 
 // validateTx checks whether a transaction is valid according to the consensus
@@ -30,7 +33,7 @@ func validateTx(tx *types.Transaction) error {
 		return ErrNegativeValue
 	}
 	// Ensure the transaction has more gas than the basic tx fee.
-	intrGas, err := legacy.IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil)
+	intrGas, err := IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil)
 	if err != nil {
 		return err
 	}
@@ -44,7 +47,7 @@ func validateTx(tx *types.Transaction) error {
 	return nil
 }
 
-func (v *LegacyChecker) checkTxs(e inter.EventPayloadI) error {
+func (v *BasicCheck) checkTxs(e inter.EventPayloadI) error {
 	for _, tx := range e.Txs() {
 		if err := validateTx(tx); err != nil {
 			return err
@@ -54,19 +57,7 @@ func (v *LegacyChecker) checkTxs(e inter.EventPayloadI) error {
 }
 
 // Validate event
-func (v *LegacyChecker) Validate(e inter.EventPayloadI) error {
-	if e.NetForkID() != 0 {
-		return ErrWrongNetForkID
-	}
-	if err := v.base.Validate(e); err != nil {
-		return err
-	}
-	if e.GasPowerUsed() >= math.MaxInt64-1 || e.GasPowerLeft().Max() >= math.MaxInt64-1 {
-		return base.ErrHugeValue
-	}
-	if e.CreationTime() <= 0 || e.MedianTime() <= 0 {
-		return ErrZeroTime
-	}
+func (v *BasicCheck) Validate(e inter.EventPayloadI) error {
 	if err := v.checkTxs(e); err != nil {
 		return err
 	}

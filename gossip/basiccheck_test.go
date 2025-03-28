@@ -6,13 +6,14 @@ import (
 	"math/big"
 	"testing"
 
-	lbasiccheck "github.com/Fantom-foundation/lachesis-base/eventcheck/basiccheck"
+	base_basiccheck "github.com/Fantom-foundation/lachesis-base/eventcheck/basiccheck"
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 
 	"github.com/0xsoniclabs/sonic/eventcheck/basiccheck"
+	legacy_basiccheck "github.com/0xsoniclabs/sonic/eventcheck/basiccheck/legacy"
 	"github.com/0xsoniclabs/sonic/inter"
 )
 
@@ -51,13 +52,13 @@ func TestBasicCheckValidate(t *testing.T) {
 			prepareTest: func(payload *inter.MutableEventPayload) {
 				payload.SetEpoch(math.MaxInt32 - 1)
 			},
-			expectedErr: lbasiccheck.ErrHugeValue,
+			expectedErr: base_basiccheck.ErrHugeValue,
 		},
 		"Validate checkInited checkInited ErrNotInited": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
 				payload.SetSeq(0)
 			},
-			expectedErr: lbasiccheck.ErrNotInited,
+			expectedErr: base_basiccheck.ErrNotInited,
 		},
 		"Validate checkInited ErrNoParents": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
@@ -68,7 +69,7 @@ func TestBasicCheckValidate(t *testing.T) {
 				parents := hash.Events{}
 				payload.SetParents(parents)
 			},
-			expectedErr: lbasiccheck.ErrNoParents,
+			expectedErr: base_basiccheck.ErrNoParents,
 		},
 		"Validate ErrHugeValue-1": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
@@ -78,7 +79,7 @@ func TestBasicCheckValidate(t *testing.T) {
 				payload.SetLamport(idx.Lamport(1))
 				payload.SetGasPowerUsed(math.MaxInt64 - 1)
 			},
-			expectedErr: lbasiccheck.ErrHugeValue,
+			expectedErr: base_basiccheck.ErrHugeValue,
 		},
 		"Validate ErrHugeValue-2": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
@@ -88,7 +89,7 @@ func TestBasicCheckValidate(t *testing.T) {
 				payload.SetLamport(idx.Lamport(1))
 				payload.SetGasPowerLeft(inter.GasPowerLeft{Gas: [2]uint64{math.MaxInt64 - 1, math.MaxInt64}})
 			},
-			expectedErr: lbasiccheck.ErrHugeValue,
+			expectedErr: base_basiccheck.ErrHugeValue,
 		},
 		"Validate ErrZeroTime-1": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
@@ -132,7 +133,7 @@ func TestBasicCheckValidate(t *testing.T) {
 				txs = append(txs, tx1)
 				payload.SetTxs(txs)
 			},
-			expectedErr: basiccheck.ErrNegativeValue,
+			expectedErr: legacy_basiccheck.ErrNegativeValue,
 		},
 		"Validate checkTxs validateTx ErrNegativeValue-2": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
@@ -156,7 +157,7 @@ func TestBasicCheckValidate(t *testing.T) {
 				txs = append(txs, tx1)
 				payload.SetTxs(txs)
 			},
-			expectedErr: basiccheck.ErrNegativeValue,
+			expectedErr: legacy_basiccheck.ErrNegativeValue,
 		},
 		"Validate checkTxs validateTx ErrIntrinsicGas": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
@@ -180,7 +181,7 @@ func TestBasicCheckValidate(t *testing.T) {
 				txs = append(txs, tx1)
 				payload.SetTxs(txs)
 			},
-			expectedErr: basiccheck.ErrIntrinsicGas,
+			expectedErr: legacy_basiccheck.ErrIntrinsicGas,
 		},
 		"Validate checkTxs validateTx ErrTipAboveFeeCap": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
@@ -206,7 +207,7 @@ func TestBasicCheckValidate(t *testing.T) {
 				txs = append(txs, tx1)
 				payload.SetTxs(txs)
 			},
-			expectedErr: basiccheck.ErrTipAboveFeeCap,
+			expectedErr: legacy_basiccheck.ErrTipAboveFeeCap,
 		},
 		"Validate returns nil": {
 			prepareTest: func(payload *inter.MutableEventPayload) {
@@ -252,7 +253,6 @@ func TestBasicCheckValidate(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
-
 		})
 	}
 }

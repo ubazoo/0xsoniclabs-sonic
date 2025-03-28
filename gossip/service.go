@@ -181,7 +181,15 @@ func NewService(stack *node.Node, config Config, store *Store, blockProc BlockPr
 	return svc, nil
 }
 
-func newService(config Config, store *Store, blockProc BlockProc, engine lachesis.Consensus, dagIndexer *vecmt.Index, newTxPool func(evmcore.StateReader) TxPool, localId enode.ID) (*Service, error) {
+func newService(
+	config Config,
+	store *Store,
+	blockProc BlockProc,
+	engine lachesis.Consensus,
+	dagIndexer *vecmt.Index,
+	newTxPool func(evmcore.StateReader) TxPool,
+	localId enode.ID,
+) (*Service, error) {
 	svc := &Service{
 		config:             config,
 		blockProcTasksDone: make(chan struct{}),
@@ -214,14 +222,6 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	netVerStore.GetNetworkVersion()
 	netVerStore.GetMissedVersion()
 
-	// create checkers
-	net := store.GetRules()
-	txSigner := gsignercache.Wrap(types.LatestSignerForChainID(new(big.Int).SetUint64(net.NetworkID)))
-	svc.heavyCheckReader.Store = store
-	svc.heavyCheckReader.Pubkeys.Store(readEpochPubKeys(svc.store, svc.store.GetEpoch()))                                          // read pub keys of current epoch from DB
-	svc.gasPowerCheckReader.Ctx.Store(NewGasPowerContext(svc.store, svc.store.GetValidators(), svc.store.GetEpoch(), net.Economy)) // read gaspower check data from DB
-	svc.checkers = makeCheckers(config.HeavyCheck, txSigner, &svc.heavyCheckReader, &svc.gasPowerCheckReader, svc.store)
-
 	// create GPO
 	svc.gpo = gasprice.NewOracle(svc.config.GPO, nil)
 
@@ -233,6 +233,14 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	}
 	svc.txpool = newTxPool(stateReader)
 	svc.gpo.SetReader(&GPOBackend{svc.store, svc.txpool})
+
+	// create checkers
+	net := store.GetRules()
+	txSigner := gsignercache.Wrap(types.LatestSignerForChainID(new(big.Int).SetUint64(net.NetworkID)))
+	svc.heavyCheckReader.Store = store
+	svc.heavyCheckReader.Pubkeys.Store(readEpochPubKeys(svc.store, svc.store.GetEpoch()))                                          // read pub keys of current epoch from DB
+	svc.gasPowerCheckReader.Ctx.Store(NewGasPowerContext(svc.store, svc.store.GetValidators(), svc.store.GetEpoch(), net.Economy)) // read gaspower check data from DB
+	svc.checkers = makeCheckers(config.HeavyCheck, txSigner, &svc.heavyCheckReader, &svc.gasPowerCheckReader, svc.store, stateReader)
 
 	// init dialCandidates
 	dnsclient := dnsdisc.NewClient(dnsdisc.Config{})
@@ -293,7 +301,15 @@ func (s localEndPointSource) GetLocalEndPoint() *enode.Node {
 }
 
 // makeCheckers builds event checkers
-func makeCheckers(heavyCheckCfg heavycheck.Config, txSigner types.Signer, heavyCheckReader *HeavyCheckReader, gasPowerCheckReader *GasPowerCheckReader, store *Store) *eventcheck.Checkers {
+func makeCheckers(
+	heavyCheckCfg heavycheck.Config,
+	txSigner types.Signer,
+	heavyCheckReader *HeavyCheckReader,
+	gasPowerCheckReader *GasPowerCheckReader,
+	store *Store,
+	state evmcore.StateReader,
+) *eventcheck.Checkers {
+
 	// create signatures checker
 	heavyCheck := heavycheck.New(heavyCheckCfg, heavyCheckReader, txSigner)
 
@@ -301,7 +317,7 @@ func makeCheckers(heavyCheckCfg heavycheck.Config, txSigner types.Signer, heavyC
 	gaspowerCheck := gaspowercheck.New(gasPowerCheckReader)
 
 	return &eventcheck.Checkers{
-		Basiccheck:    basiccheck.New(),
+		Basiccheck:    basiccheck.New(state),
 		Epochcheck:    epochcheck.New(store),
 		Parentscheck:  parentscheck.New(),
 		Heavycheck:    heavyCheck,
