@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand/v2"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -40,7 +41,6 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/sealmodule"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
-	"github.com/0xsoniclabs/sonic/gossip/evmstore"
 	"github.com/0xsoniclabs/sonic/gossip/filters"
 	"github.com/0xsoniclabs/sonic/gossip/gasprice"
 	"github.com/0xsoniclabs/sonic/gossip/proclogger"
@@ -53,6 +53,8 @@ import (
 	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/0xsoniclabs/sonic/vecmt"
 )
+
+//go:generate mockgen -source=service.go -package=gossip -destination=service_mock.go
 
 type ServiceFeed struct {
 	scope notify.SubscriptionScope
@@ -88,7 +90,11 @@ func (f *ServiceFeed) SubscribeNewLogs(ch chan<- []*types.Log) notify.Subscripti
 	return f.scope.Track(f.newLogs.Subscribe(ch))
 }
 
-func (f *ServiceFeed) Start(store *evmstore.Store) {
+type ArchiveBlockHeightSource interface {
+	GetArchiveBlockHeight() (uint64, bool, error)
+}
+
+func (f *ServiceFeed) Start(store ArchiveBlockHeightSource) {
 	incoming := make(chan feedUpdate, 1024)
 	f.incomingUpdates = incoming
 	stop := make(chan struct{})
@@ -99,28 +105,41 @@ func (f *ServiceFeed) Start(store *evmstore.Store) {
 		defer close(done)
 		ticker := time.NewTicker(10 * time.Millisecond)
 		defer ticker.Stop()
+		pending := []feedUpdate{}
 		for {
+			// Wait for next turn.
 			select {
 			case <-stop:
 				return
 			case update := <-incoming:
-				for {
-					height, empty, err := store.GetArchiveBlockHeight()
-					if err != nil {
-						log.Error("failed to get archive block height", "err", err)
-					} else if !empty && height >= update.block.Number.Uint64() {
-						f.newBlock.Send(evmcore.ChainHeadNotify{Block: update.block})
-						f.newLogs.Send(update.logs)
-						break
-					}
+				pending = append(pending, update)
+				// sorting could be replaced by a heap or skipped if updates
+				// are guaranteed to be delivered in order.
+				slices.SortFunc(pending, func(a, b feedUpdate) int {
+					return a.block.Number.Cmp(b.block.Number)
+				})
+			case <-ticker.C:
+			}
 
-					// Wait for next timer tick or stop signal.
-					select {
-					case <-stop:
-						return
-					case <-ticker.C:
-					}
+			if len(pending) == 0 {
+				continue
+			}
+
+			height, empty, err := store.GetArchiveBlockHeight()
+			if err != nil {
+				log.Error("failed to get archive block height", "err", err)
+				continue
+			}
+			if empty {
+				continue
+			}
+			for i, update := range pending {
+				if update.block.Number.Uint64() > height {
+					pending = pending[i:]
+					break
 				}
+				f.newBlock.Send(evmcore.ChainHeadNotify{Block: update.block})
+				f.newLogs.Send(update.logs)
 			}
 		}
 	}()
