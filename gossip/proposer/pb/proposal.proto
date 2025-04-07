@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package sonic.gossip.proposer.proto;
+
+option go_package = ".;pb";
+
+// A proposal made by a validator for the content of a new block.
+message Proposal {
+
+    uint64 number = 1;
+
+    uint64 timestamp = 2;  // Unix nano-second timestamp
+    
+    bytes parent_hash = 3;
+
+    bytes prev_randao = 4;
+
+    repeated Transaction transactions = 6;
+}
+
+message Transaction {
+    bytes encoded = 1;
+
+    // TODO: consider encoding transaction in non-encoded format
+}
