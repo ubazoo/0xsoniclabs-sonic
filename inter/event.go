@@ -67,9 +67,11 @@ var emptyPayloadHash1 = CalcPayloadHash(&MutableEventPayload{extEventData: extEv
 func EmptyPayloadHash(version uint8) hash.Hash {
 	if version == 1 {
 		return emptyPayloadHash1
-	} else {
-		return hash.Hash(types.EmptyRootHash)
 	}
+	if version == 3 {
+		return hash.Hash{}
+	}
+	return hash.Hash(types.EmptyRootHash)
 }
 
 type baseEvent struct {
@@ -252,6 +254,11 @@ func (e *MutableEventPayload) SetSig(v Signature) { e.sig = v }
 func (e *MutableEventPayload) SetTxs(v types.Transactions) {
 	e.txs = v
 	e.anyTxs = len(v) != 0
+}
+
+func (e *MutableEventPayload) SetProposal(p *Proposal) {
+	e.proposal = p
+	e.hasProposal = p != nil
 }
 
 func (e *MutableEventPayload) SetMisbehaviourProofs(v []MisbehaviourProof) {
