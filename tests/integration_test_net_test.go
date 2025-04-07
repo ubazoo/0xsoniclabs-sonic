@@ -8,6 +8,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/config"
 	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/tests/contracts/counter"
 	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum/common"
@@ -288,4 +289,18 @@ func TestIntegrationTestNet_AccountsToBeDeployedWithGenesisCanBeCalled(t *testin
 
 	require.Equal(t, topic, receipt.Logs[0].Topics[0])
 
+}
+
+func TestIntegrationTestNet_CanProcessTransactionsWithAllegroRules(t *testing.T) {
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		FeatureSet: opera.AllegroFeatures,
+		NumNodes:   3,
+	})
+
+	for range 10 {
+		_, err := net.EndowAccount(common.Address{0x42}, big.NewInt(1000))
+		require.NoError(t, err)
+	}
+
+	net.Stop()
 }

@@ -1,6 +1,7 @@
 package emitter
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/Fantom-foundation/lachesis-base/common/bigendian"
@@ -153,6 +154,9 @@ func (em *Emitter) addTxs(e *inter.MutableEventPayload, sorted *transactionsByPr
 	for tx, _ := sorted.Peek(); tx != nil; tx, _ = sorted.Peek() {
 		resolvedTx := tx.Resolve()
 		sender, _ := types.Sender(em.world.TxSigner, resolvedTx)
+
+		fmt.Printf("Candidate transaction from sender %s, nonce %d, ...\n", sender.Hex(), resolvedTx.Nonce())
+
 		// check transaction epoch rules (tx type, gas price)
 		if epochcheck.CheckTxs(types.Transactions{resolvedTx}, rules) != nil {
 			txsSkippedEpochRules.Inc(1)

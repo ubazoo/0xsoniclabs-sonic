@@ -103,6 +103,36 @@ func (p *StateProcessor) Process(
 	return
 }
 
+func (p *StateProcessor) BeginBlock(
+	block *EvmBlock, statedb state.StateDB, cfg vm.Config, usedGas *uint64,
+) func(i int, tx *types.Transaction) (receipt *types.Receipt, skipped bool, err error) {
+	var (
+		gp           = new(core.GasPool).AddGas(block.GasLimit)
+		skip         bool
+		header       = block.Header()
+		time         = uint64(block.Time.Unix())
+		blockContext = NewEVMBlockContext(header, p.bc, nil)
+		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
+		blockNumber  = block.Number
+		signer       = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
+	)
+
+	// execute EIP-2935 HistoryStorage contract.
+	if p.config.IsPrague(blockNumber, time) {
+		ProcessParentBlockHash(block.ParentHash, vmenv)
+	}
+
+	return func(i int, tx *types.Transaction) (receipt *types.Receipt, skipped bool, err error) {
+		msg, err := TxAsMessage(tx, signer, header.BaseFee)
+		if err != nil {
+			return nil, false, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+		}
+		statedb.SetTxContext(tx.Hash(), i)
+		receipt, _, skip, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, nil)
+		return receipt, skip, err
+	}
+}
+
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
 // and uses the input parameters for its environment similar to ApplyTransaction. However,
 // this method takes an already created EVM instance as input.

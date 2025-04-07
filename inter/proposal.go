@@ -6,6 +6,7 @@ import (
 
 	"github.com/0xsoniclabs/sonic/inter/pb"
 	"github.com/Fantom-foundation/lachesis-base/hash"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"google.golang.org/protobuf/proto"
@@ -19,9 +20,10 @@ import (
 // created by a proposer. It is signed by the proposer and sent to
 // validators for validation and inclusion in the blockchain.
 type Proposal struct {
-	Number       uint64
+	Number       idx.Block
+	Attempt      uint32
 	ParentHash   common.Hash
-	Timestamp    Timestamp
+	Time         Timestamp
 	PrevRandao   common.Hash
 	Transactions []*types.Transaction
 	// TODO: consider adding fields needed for light client protocol
@@ -31,11 +33,12 @@ type Proposal struct {
 // Hash computes a cryptographic hash of the proposal. The hash can be used to
 // sign and verify the proposal.
 func (p *Proposal) Hash() hash.Hash {
-	size := 8 + 32 + 8 + 32 + 32*len(p.Transactions)
+	size := 8 + 4 + 32 + 8 + 32 + 32*len(p.Transactions)
 	data := make([]byte, 0, size)
-	data = binary.BigEndian.AppendUint64(data, p.Number)
+	data = binary.BigEndian.AppendUint64(data, uint64(p.Number))
+	data = binary.BigEndian.AppendUint32(data, uint32(p.Attempt))
 	data = append(data, p.ParentHash[:]...)
-	data = binary.BigEndian.AppendUint64(data, uint64(p.Timestamp))
+	data = binary.BigEndian.AppendUint64(data, uint64(p.Time))
 	data = append(data, p.PrevRandao[:]...)
 	for _, tx := range p.Transactions {
 		txHash := tx.Hash()
@@ -57,9 +60,10 @@ func (p *Proposal) Serialize() ([]byte, error) {
 	}
 
 	return proto.Marshal(&pb.Proposal{
-		Number:       p.Number,
+		Number:       uint64(p.Number),
+		Attempt:      p.Attempt,
 		ParentHash:   p.ParentHash[:],
-		Timestamp:    uint64(p.Timestamp),
+		Timestamp:    uint64(p.Time),
 		PrevRandao:   p.PrevRandao[:],
 		Transactions: transactions,
 	})
@@ -72,9 +76,10 @@ func (p *Proposal) Deserialize(data []byte) error {
 	}
 
 	// Restore individual fields.
-	p.Number = pb.Number
+	p.Number = idx.Block(pb.Number)
+	p.Attempt = pb.Attempt
 	copy(p.ParentHash[:], pb.ParentHash)
-	p.Timestamp = Timestamp(pb.Timestamp)
+	p.Time = Timestamp(pb.Timestamp)
 	copy(p.PrevRandao[:], pb.PrevRandao)
 	for _, tx := range pb.Transactions {
 		var transaction types.Transaction

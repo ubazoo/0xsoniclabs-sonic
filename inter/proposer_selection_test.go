@@ -18,7 +18,7 @@ func TestGetProposer_IsDeterministic(t *testing.T) {
 	validators := builder.Build()
 
 	for i := range 5 {
-		for j := range 5 {
+		for j := range uint32(5) {
 			a, err := GetProposer(validators, idx.Block(i), j)
 			require.NoError(err)
 			b, err := GetProposer(validators, idx.Block(i), j)
@@ -43,10 +43,10 @@ func TestGetProposer_ProposersAreSelectedProportionalToStake(t *testing.T) {
 			return GetProposer(validators, idx.Block(i), 0)
 		},
 		"over attempts": func(i int) (idx.ValidatorID, error) {
-			return GetProposer(validators, 1, i)
+			return GetProposer(validators, 1, uint32(i))
 		},
 		"mixed blocks and attempts": func(i int) (idx.ValidatorID, error) {
-			return GetProposer(validators, idx.Block(i/5), i%5)
+			return GetProposer(validators, idx.Block(i/5), uint32(i%5))
 		},
 	}
 

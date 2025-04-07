@@ -135,7 +135,7 @@ func consensusCallbackBeginBlockFn(
 					atroposTime = e.MedianTime()
 					atroposDegenerate = false
 				}
-				if e.AnyTxs() {
+				if e.AnyTxs() || e.HasProposal() {
 					confirmedEvents = append(confirmedEvents, e.ID())
 				}
 				eventProcessor.ProcessConfirmedEvent(e)
@@ -164,6 +164,28 @@ func consensusCallbackBeginBlockFn(
 				skipBlock := atroposDegenerate
 				// Check if empty block should be pruned
 				emptyBlock := confirmedEvents.Len() == 0 && cBlock.Cheaters.Len() == 0
+
+				// In Allegro, we consider we skip proposals for unexpected blocks.
+				if es.Rules.Upgrades.Allegro {
+					// TODO: handle case where there are more proposals in the same atropos down-set
+					hasBlock := false
+					for _, eventId := range confirmedEvents {
+						event := store.GetEventPayload(eventId)
+						proposal := event.Proposal()
+						if proposal != nil && proposal.Number == blockCtx.Idx {
+							if emitters != nil {
+								for _, emitter := range *emitters {
+									emitter.UpdateFrameOfLastProposal(event.Frame())
+								}
+							}
+
+							hasBlock = true
+							break
+						}
+					}
+					emptyBlock = emptyBlock || !hasBlock
+				}
+
 				skipBlock = skipBlock || (emptyBlock && blockCtx.Time < bs.LastBlock.Time+es.Rules.Blocks.MaxEmptyBlockSkipPeriod)
 				// Finalize the progress of eventProcessor
 				bs = eventProcessor.Finalize(blockCtx, skipBlock) // TODO: refactor to not mutate the bs, it is unclear
@@ -277,13 +299,39 @@ func consensusCallbackBeginBlockFn(
 					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
 					orderedTxs := getExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
 
+					if es.Rules.Upgrades.Allegro {
+						proposals := []*inter.Proposal{}
+						for _, e := range blockEvents {
+							if e.HasProposal() {
+								proposals = append(proposals, e.Proposal())
+							}
+						}
+						fmt.Printf("PROCESS: found %d proposal(s)\n", len(proposals))
+						// TODO: there may be more than 1 proposals; conflicts
+						// and invalid proposals must be detected and handled.
+						if len(proposals) > 0 {
+							fmt.Printf("PROCESS: got proposal for block %d, wanted %d\n", proposals[0].Number, blockCtx.Idx)
+							if proposals[0].Number == blockCtx.Idx {
+								orderedTxs = proposals[0].Transactions
+							}
+						}
+					}
+
 					for i, receipt := range evmProcessor.Execute(orderedTxs) {
 						if receipt != nil { // < nil if skipped
 							blockBuilder.AddTransaction(orderedTxs[i], receipt)
+							fmt.Printf("\tCompleted transaction with nonce %d\n", orderedTxs[i].Nonce())
+						} else {
+							fmt.Printf("\tSkipped transaction with nonce %d\n", orderedTxs[i].Nonce())
 						}
 					}
 
 					evmBlock, skippedTxs, allReceipts := evmProcessor.Finalize()
+
+					// TODO: remove this check; it is just here for testing
+					if len(skippedTxs) > 0 {
+						panic("skipped transactions should be handled in the block builder")
+					}
 
 					// Add results of the transaction processing to the block.
 					blockBuilder.
@@ -341,7 +389,7 @@ func consensusCallbackBeginBlockFn(
 					bs = txListener.Finalize() // TODO: refactor to not mutate the bs
 					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
 					// At this point, block state is finalized
-
+					fmt.Printf("PROCESS: Completed block %d\n", blockCtx.Idx)
 					// Build index for not skipped txs
 					if txIndex {
 						for _, tx := range evmBlock.Transactions {

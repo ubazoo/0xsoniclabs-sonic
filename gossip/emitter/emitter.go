@@ -42,6 +42,7 @@ var (
 	txsSkippedConflictingSender = metrics.GetOrRegisterCounter("emitter/skipped/conflictingsender", nil) // tx by given sender in some unconfirmed event
 	txsSkippedNotMyTurn         = metrics.GetOrRegisterCounter("emitter/skipped/notmyturn", nil)         // tx should be handled by other validator
 	txsSkippedOutdated          = metrics.GetOrRegisterCounter("emitter/skipped/outdated", nil)          // tx skipped because it is outdated
+	txsSkippedExecutionError    = metrics.GetOrRegisterCounter("emitter/skipped/executionerror", nil)    // tx skipped because of execution error
 
 	skippedOfflineValidatorsCounter = metrics.GetOrRegisterCounter("emitter/skipped_offline", nil)
 
@@ -62,6 +63,9 @@ type Emitter struct {
 	prevEmittedAtBlock idx.Block
 	originatedTxs      *originatedtxs.Buffer
 	pendingGas         uint64
+
+	lastBlockProposedByThisEmitter idx.Block
+	frameOfLastConfirmedProposal   atomic.Uint32
 
 	// note: track validators and epoch internally to avoid referring to
 	// validators of a future epoch inside OnEventConnected of last epoch event
@@ -381,7 +385,9 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	}
 
 	version := uint8(0)
-	if em.world.GetRules().Upgrades.Sonic {
+	if em.world.GetRules().Upgrades.Allegro {
+		version = 3
+	} else if em.world.GetRules().Upgrades.Sonic {
 		version = 2
 	} else if em.world.GetRules().Upgrades.Llr {
 		version = 1
@@ -417,8 +423,16 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 		return nil, nil
 	}
 
-	// Add txs
-	em.addTxs(mutEvent, sortedTxs)
+	// add payload to the event
+	if version == 3 {
+		// add a full block proposal
+		if err := em.addProposal(mutEvent, sortedTxs); err != nil {
+			return nil, err
+		}
+	} else {
+		// Add txs
+		em.addTxs(mutEvent, sortedTxs)
+	}
 
 	// calc Payload hash
 	mutEvent.SetPayloadHash(inter.CalcPayloadHash(mutEvent))
@@ -473,4 +487,12 @@ func (em *Emitter) nameEventForDebug(e *inter.EventPayload) {
 	hash.SetEventName(e.ID(), fmt.Sprintf("%s%03d",
 		strings.ToLower(string(name)),
 		e.Seq()))
+}
+
+func (em *Emitter) UpdateFrameOfLastProposal(frame idx.Frame) {
+	em.frameOfLastConfirmedProposal.Store(uint32(frame))
+}
+
+func (em *Emitter) GetFrameOfLastProposal() idx.Frame {
+	return idx.Frame(em.frameOfLastConfirmedProposal.Load())
 }

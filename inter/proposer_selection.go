@@ -16,13 +16,13 @@ import (
 func GetProposer(
 	validators *pos.Validators,
 	number idx.Block,
-	attempt int,
+	attempt uint32,
 ) (idx.ValidatorID, error) {
 
-	// TODO: add support for multiple attempts
+	// TODO: consider excluding first proposer from second attempt mapping
 	data := make([]byte, 0, 8+4)
 	data = binary.BigEndian.AppendUint64(data, uint64(number))
-	data = binary.BigEndian.AppendUint32(data, uint32(attempt))
+	data = binary.BigEndian.AppendUint32(data, attempt)
 	hash := sha256.Sum256(data)
 
 	limit := new(big.Rat).Quo(
@@ -51,5 +51,5 @@ func GetProposer(
 		}
 	}
 
-	return 0, fmt.Errorf("no proposer found")
+	return ids[len(ids)-1], nil
 }

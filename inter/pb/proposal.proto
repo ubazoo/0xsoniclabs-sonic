@@ -9,11 +9,13 @@ message Proposal {
 
     uint64 number = 1;
 
-    uint64 timestamp = 2;  // Unix nano-second timestamp
-    
-    bytes parent_hash = 3;
+    uint32 attempt = 2;
 
-    bytes prev_randao = 4;
+    uint64 timestamp = 3;  // Unix nano-second timestamp
+    
+    bytes parent_hash = 4;
+
+    bytes prev_randao = 5;
 
     repeated Transaction transactions = 6;
 }
