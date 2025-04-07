@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 
 	"github.com/0xsoniclabs/sonic/inter/pb"
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"google.golang.org/protobuf/proto"
@@ -29,20 +30,16 @@ type Proposal struct {
 
 // Hash computes a cryptographic hash of the proposal. The hash can be used to
 // sign and verify the proposal.
-func (p *Proposal) Hash() common.Hash {
-	data := make([]byte, 8+32+8+32+32*len(p.Transactions))
-	cur := data[:0]
-	binary.BigEndian.PutUint64(cur, p.Number)
-	cur = cur[8:]
-	cur = append(cur, p.ParentHash[:]...)
-	cur = cur[32:]
-	binary.BigEndian.PutUint64(cur, uint64(p.Timestamp))
-	cur = cur[8:]
-	cur = append(cur, p.PrevRandao[:]...)
-	cur = cur[32:]
-	for i := range p.Transactions {
-		txHash := p.Transactions[i].Hash()
-		cur = append(cur, txHash[:]...)
+func (p *Proposal) Hash() hash.Hash {
+	size := 8 + 32 + 8 + 32 + 32*len(p.Transactions)
+	data := make([]byte, 0, size)
+	data = binary.BigEndian.AppendUint64(data, p.Number)
+	data = append(data, p.ParentHash[:]...)
+	data = binary.BigEndian.AppendUint64(data, uint64(p.Timestamp))
+	data = append(data, p.PrevRandao[:]...)
+	for _, tx := range p.Transactions {
+		txHash := tx.Hash()
+		data = append(data, txHash[:]...)
 	}
 	return sha256.Sum256(data)
 }
