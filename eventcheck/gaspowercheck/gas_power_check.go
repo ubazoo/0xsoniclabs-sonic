@@ -7,7 +7,7 @@ import (
 
 	"github.com/0xsoniclabs/consensus/consensus"
 
-	"github.com/0xsoniclabs/consensus/eventcheck/epochcheck"
+	"github.com/0xsoniclabs/sonic/eventcheck/base/epochcheck"
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"

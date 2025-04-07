@@ -8,7 +8,7 @@ import (
 
 	"github.com/0xsoniclabs/consensus/consensus"
 
-	lbasiccheck "github.com/0xsoniclabs/consensus/eventcheck/basiccheck"
+	lbasiccheck "github.com/0xsoniclabs/sonic/eventcheck/base/basiccheck"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
 

@@ -6,7 +6,7 @@ import (
 
 	"github.com/0xsoniclabs/consensus/consensus"
 
-	"github.com/0xsoniclabs/consensus/eventcheck"
+	eventcheck "github.com/0xsoniclabs/sonic/eventcheck/base"
 	"github.com/0xsoniclabs/sonic/gossip/dagordering"
 	"github.com/0xsoniclabs/sonic/utils/datasemaphore"
 	"github.com/0xsoniclabs/sonic/utils/workers"
