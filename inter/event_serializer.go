@@ -20,7 +20,7 @@ var (
 	ErrUnknownVersion    = errors.New("unknown serialization version")
 )
 
-const MaxSerializationVersion = 2
+const MaxSerializationVersion = 3
 
 const ProtocolMaxMsgSize = 10 * 1024 * 1024
 
@@ -73,7 +73,10 @@ func (e *Event) MarshalCSER(w *cser.Writer) error {
 		w.Bool(e.AnyEpochVote())
 		w.Bool(e.AnyBlockVotes())
 	}
-	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() {
+	if e.Version() == 3 {
+		w.Bool(e.HasProposal())
+	}
+	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() || e.HasProposal() {
 		w.FixedBytes(e.PayloadHash().Bytes())
 	}
 	// extra
@@ -147,8 +150,9 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	anyMisbehaviourProofs := version == 1 && r.Bool()
 	anyEpochVote := version == 1 && r.Bool()
 	anyBlockVotes := version == 1 && r.Bool()
+	hasProposal := version == 3 && r.Bool()
 	payloadHash := EmptyPayloadHash(version)
-	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes {
+	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes || hasProposal {
 		r.FixedBytes(payloadHash[:])
 		if payloadHash == EmptyPayloadHash(version) {
 			return cser.ErrNonCanonicalEncoding
@@ -178,6 +182,7 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	e.anyBlockVotes = anyBlockVotes
 	e.anyEpochVote = anyEpochVote
 	e.anyMisbehaviourProofs = anyMisbehaviourProofs
+	e.hasProposal = hasProposal
 	e.SetPayloadHash(payloadHash)
 	e.SetExtra(extra)
 	return nil
@@ -251,6 +256,12 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 	if e.AnyBlockVotes() != (len(e.blockVotes.Votes) != 0) {
 		return ErrSerMalformedEvent
 	}
+	if e.HasProposal() != (e.proposal != nil) {
+		return ErrSerMalformedEvent
+	}
+	if e.Version() != 3 && e.HasProposal() {
+		return ErrSerMalformedEvent
+	}
 	err := e.Event.MarshalCSER(w)
 	if err != nil {
 		return err
@@ -289,6 +300,13 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 		if err != nil {
 			return err
 		}
+	}
+	if e.HasProposal() {
+		b, err := e.Proposal().Serialize()
+		if err != nil {
+			return err
+		}
+		w.SliceBytes(b)
 	}
 	return nil
 }
@@ -361,6 +379,18 @@ func (e *MutableEventPayload) UnmarshalCSER(r *cser.Reader) error {
 		}
 	}
 	e.blockVotes = bvs
+
+	// block proposals
+	if e.HasProposal() {
+		b := r.SliceBytes(ProtocolMaxMsgSize)
+		proposal := &Proposal{}
+		err := proposal.Deserialize(b)
+		if err != nil {
+			return err
+		}
+		e.proposal = proposal
+	}
+
 	return nil
 }
 

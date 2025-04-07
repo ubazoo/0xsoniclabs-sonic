@@ -32,6 +32,7 @@ type EventI interface {
 	AnyBlockVotes() bool
 	AnyEpochVote() bool
 	AnyMisbehaviourProofs() bool
+	HasProposal() bool
 	PayloadHash() hash.Hash
 }
 
@@ -58,6 +59,7 @@ type EventPayloadI interface {
 	EpochVote() LlrEpochVote
 	BlockVotes() LlrBlockVotes
 	MisbehaviourProofs() []MisbehaviourProof
+	Proposal() *Proposal
 }
 
 var emptyPayloadHash1 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 1}})
@@ -92,6 +94,7 @@ type extEventData struct {
 	anyBlockVotes         bool
 	anyEpochVote          bool
 	anyMisbehaviourProofs bool
+	hasProposal           bool
 	payloadHash           hash.Hash
 }
 
@@ -105,6 +108,8 @@ type payloadData struct {
 
 	epochVote  LlrEpochVote
 	blockVotes LlrBlockVotes
+
+	proposal *Proposal
 }
 
 type Event struct {
@@ -182,6 +187,8 @@ func (e *extEventData) AnyEpochVote() bool { return e.anyEpochVote }
 
 func (e *extEventData) AnyBlockVotes() bool { return e.anyBlockVotes }
 
+func (e *extEventData) HasProposal() bool { return e.hasProposal }
+
 func (e *extEventData) GasPowerLeft() GasPowerLeft { return e.gasPowerLeft }
 
 func (e *extEventData) GasPowerUsed() uint64 { return e.gasPowerUsed }
@@ -189,6 +196,8 @@ func (e *extEventData) GasPowerUsed() uint64 { return e.gasPowerUsed }
 func (e *sigData) Sig() Signature { return e.sig }
 
 func (e *payloadData) Txs() types.Transactions { return e.txs }
+
+func (e *payloadData) Proposal() *Proposal { return e.proposal }
 
 func (e *payloadData) MisbehaviourProofs() []MisbehaviourProof { return e.misbehaviourProofs }
 
@@ -209,9 +218,15 @@ func CalcMisbehaviourProofsHash(mps []MisbehaviourProof) hash.Hash {
 func CalcPayloadHash(e EventPayloadI) hash.Hash {
 	if e.Version() == 1 {
 		return hash.Of(hash.Of(CalcTxHash(e.Txs()).Bytes(), CalcMisbehaviourProofsHash(e.MisbehaviourProofs()).Bytes()).Bytes(), hash.Of(e.EpochVote().Hash().Bytes(), e.BlockVotes().Hash().Bytes()).Bytes())
-	} else {
-		return CalcTxHash(e.Txs())
 	}
+	if e.Version() == 3 {
+		proposal := e.Proposal()
+		if proposal == nil {
+			return hash.Hash{}
+		}
+		return hash.Hash(proposal.Hash())
+	}
+	return CalcTxHash(e.Txs())
 }
 
 func (e *MutableEventPayload) SetVersion(v uint8) { e.version = v }
