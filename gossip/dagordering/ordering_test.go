@@ -39,7 +39,7 @@ func testEventsBuffer(t *testing.T, try int64) {
 
 	processed := make(map[consensus.EventHash]consensus.Event)
 	limit := consensus.Metric{
-		Num:  consensus.Seq(len(ordered)),
+		Num:  uint32(len(ordered)),
 		Size: ordered.Metric().Size,
 	}
 	buffer := New(limit, Callback{
@@ -127,8 +127,8 @@ func testEventsBufferReleasing(t *testing.T, maxEvents int, try int64) {
 	processed := make(map[consensus.EventHash]consensus.Event)
 	var mutex sync.Mutex
 	limit := consensus.Metric{
-		Num:  consensus.Seq(rand.Intn(maxEvents)), // nolint:gosec
-		Size: uint64(rand.Intn(maxEvents * 100)),  // nolint:gosec
+		Num:  uint32(rand.Intn(maxEvents)),       // nolint:gosec
+		Size: uint64(rand.Intn(maxEvents * 100)), // nolint:gosec
 	}
 	buffer := New(limit, Callback{
 		Process: func(e consensus.Event) error {
