@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensustest"
 
 	"github.com/0xsoniclabs/consensus/vecengine"
 	"github.com/stretchr/testify/assert"
@@ -14,7 +15,7 @@ import (
 )
 
 func TestMedianTimeOnIndex(t *testing.T) {
-	nodes := consensus.GenNodes(5)
+	nodes := consensustest.GenNodes(5)
 	weights := []consensus.Weight{5, 4, 3, 2, 1}
 	validators := consensus.ArrayToValidators(nodes, weights)
 
@@ -155,7 +156,7 @@ func testMedianTime(t *testing.T, dagAscii string, weights []consensus.Weight, c
 	assertar := assert.New(t)
 
 	var ordered consensus.Events
-	nodes, _, named := consensus.ASCIIschemeForEach(dagAscii, consensus.ForEachEvent{
+	nodes, _, named := consensustest.ASCIIschemeForEach(dagAscii, consensustest.ForEachEvent{
 		Process: func(e consensus.Event, name string) {
 			ordered = append(ordered, &eventWithCreationTime{e, creationTimes[name]})
 		},
