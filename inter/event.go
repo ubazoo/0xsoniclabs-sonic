@@ -224,7 +224,7 @@ func CalcPayloadHash(e EventPayloadI) hash.Hash {
 		if proposal == nil {
 			return hash.Hash{}
 		}
-		return hash.Hash(proposal.Hash())
+		return proposal.Hash()
 	}
 	return CalcTxHash(e.Txs())
 }
