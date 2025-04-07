@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/0xsoniclabs/consensus/consensus"
+	"github.com/0xsoniclabs/consensus/consensus/consensustest"
 
 	"github.com/stretchr/testify/require"
 
@@ -73,7 +74,7 @@ func testLeecherNoDeadlocks(t *testing.T, maxPeers int) {
 		select {
 		case req := <-requests:
 			if rand.IntN(10) != 0 {
-				err := leecher.NotifyChunkReceived(req.request.Session.ID, consensus.FakeEvent(), rand.IntN(5) == 0)
+				err := leecher.NotifyChunkReceived(req.request.Session.ID, consensustest.FakeEventHash(), rand.IntN(5) == 0)
 				if !terminated {
 					require.NoError(t, err)
 				}
