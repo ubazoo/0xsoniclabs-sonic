@@ -1,4 +1,4 @@
-package proposer
+package inter
 
 import (
 	"testing"

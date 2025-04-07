@@ -1,11 +1,10 @@
-package proposer
+package inter
 
 import (
 	"crypto/sha256"
 	"encoding/binary"
 
-	"github.com/0xsoniclabs/sonic/gossip/proposer/pb"
-	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/0xsoniclabs/sonic/inter/pb"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"google.golang.org/protobuf/proto"
@@ -21,10 +20,11 @@ import (
 type Proposal struct {
 	Number       uint64
 	ParentHash   common.Hash
-	Timestamp    inter.Timestamp
+	Timestamp    Timestamp
 	PrevRandao   common.Hash
 	Transactions []*types.Transaction
 	// TODO: consider adding fields needed for light client protocol
+	// TODO: need a way to prevent a single validator to propose a huge block
 }
 
 // Hash computes a cryptographic hash of the proposal. The hash can be used to
@@ -77,7 +77,7 @@ func (p *Proposal) Deserialize(data []byte) error {
 	// Restore individual fields.
 	p.Number = pb.Number
 	copy(p.ParentHash[:], pb.ParentHash)
-	p.Timestamp = inter.Timestamp(pb.Timestamp)
+	p.Timestamp = Timestamp(pb.Timestamp)
 	copy(p.PrevRandao[:], pb.PrevRandao)
 	for _, tx := range pb.Transactions {
 		var transaction types.Transaction
