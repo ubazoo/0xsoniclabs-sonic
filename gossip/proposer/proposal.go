@@ -1,0 +1,91 @@
+package proposer
+
+import (
+	"crypto/sha256"
+	"encoding/binary"
+
+	"github.com/0xsoniclabs/sonic/gossip/proposer/pb"
+	"github.com/0xsoniclabs/sonic/inter"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"google.golang.org/protobuf/proto"
+)
+
+// Proposal represents a block proposal in the consensus protocol.
+// It contains the block number, parent hash, timestamp, previous randao,
+// and a list of transactions.
+//
+// A proposal is a candidate for inclusion in the blockchain and is
+// created by a proposer. It is signed by the proposer and sent to
+// validators for validation and inclusion in the blockchain.
+type Proposal struct {
+	Number       uint64
+	ParentHash   common.Hash
+	Timestamp    inter.Timestamp
+	PrevRandao   common.Hash
+	Transactions []*types.Transaction
+	// TODO: consider adding fields needed for light client protocol
+}
+
+// Hash computes a cryptographic hash of the proposal. The hash can be used to
+// sign and verify the proposal.
+func (p *Proposal) Hash() common.Hash {
+	data := make([]byte, 8+32+8+32+32*len(p.Transactions))
+	cur := data[:0]
+	binary.BigEndian.PutUint64(cur, p.Number)
+	cur = cur[8:]
+	cur = append(cur, p.ParentHash[:]...)
+	cur = cur[32:]
+	binary.BigEndian.PutUint64(cur, uint64(p.Timestamp))
+	cur = cur[8:]
+	cur = append(cur, p.PrevRandao[:]...)
+	cur = cur[32:]
+	for i := range p.Transactions {
+		txHash := p.Transactions[i].Hash()
+		cur = append(cur, txHash[:]...)
+	}
+	return sha256.Sum256(data)
+}
+
+func (p *Proposal) Serialize() ([]byte, error) {
+	transactions := make([]*pb.Transaction, 0, len(p.Transactions))
+	for _, tx := range p.Transactions {
+		data, err := tx.MarshalBinary()
+		if err != nil {
+			return nil, err
+		}
+		transactions = append(transactions, &pb.Transaction{
+			Encoded: data,
+		})
+	}
+
+	return proto.Marshal(&pb.Proposal{
+		Number:       p.Number,
+		ParentHash:   p.ParentHash[:],
+		Timestamp:    uint64(p.Timestamp),
+		PrevRandao:   p.PrevRandao[:],
+		Transactions: transactions,
+	})
+}
+
+func (p *Proposal) Deserialize(data []byte) error {
+	var pb pb.Proposal
+	if err := proto.Unmarshal(data, &pb); err != nil {
+		return err
+	}
+
+	// Restore individual fields.
+	p.Number = pb.Number
+	copy(p.ParentHash[:], pb.ParentHash)
+	p.Timestamp = inter.Timestamp(pb.Timestamp)
+	copy(p.PrevRandao[:], pb.PrevRandao)
+	for _, tx := range pb.Transactions {
+		var transaction types.Transaction
+		if err := transaction.UnmarshalBinary(tx.Encoded); err != nil {
+			return err
+		}
+		p.Transactions = append(p.Transactions, &transaction)
+	}
+
+	return nil
+}
