@@ -33,6 +33,7 @@ import (
 	"github.com/0xsoniclabs/sonic/eventcheck/gaspowercheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/heavycheck"
 	"github.com/0xsoniclabs/sonic/eventcheck/parentscheck"
+	"github.com/0xsoniclabs/sonic/eventcheck/proposalcheck"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc"
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/drivermodule"
@@ -204,6 +205,7 @@ type Service struct {
 	txpool              TxPool
 	heavyCheckReader    HeavyCheckReader
 	gasPowerCheckReader GasPowerCheckReader
+	proposalCheckReader ProposalCheckReader
 	checkers            *eventcheck.Checkers
 	uniqueEventIDs      uniqueID
 
@@ -307,7 +309,8 @@ func newService(config Config, store *Store, blockProc BlockProc, engine lachesi
 	svc.heavyCheckReader.Store = store
 	svc.heavyCheckReader.Pubkeys.Store(readEpochPubKeys(svc.store, svc.store.GetEpoch()))                                          // read pub keys of current epoch from DB
 	svc.gasPowerCheckReader.Ctx.Store(NewGasPowerContext(svc.store, svc.store.GetValidators(), svc.store.GetEpoch(), net.Economy)) // read gaspower check data from DB
-	svc.checkers = makeCheckers(config.HeavyCheck, txSigner, &svc.heavyCheckReader, &svc.gasPowerCheckReader, svc.store)
+	svc.proposalCheckReader.validators.Store(svc.store.GetValidators())
+	svc.checkers = makeCheckers(config.HeavyCheck, txSigner, &svc.heavyCheckReader, &svc.gasPowerCheckReader, &svc.proposalCheckReader, svc.store)
 
 	// create GPO
 	svc.gpo = gasprice.NewOracle(svc.config.GPO, nil)
@@ -380,17 +383,28 @@ func (s localEndPointSource) GetLocalEndPoint() *enode.Node {
 }
 
 // makeCheckers builds event checkers
-func makeCheckers(heavyCheckCfg heavycheck.Config, txSigner types.Signer, heavyCheckReader *HeavyCheckReader, gasPowerCheckReader *GasPowerCheckReader, store *Store) *eventcheck.Checkers {
+func makeCheckers(
+	heavyCheckCfg heavycheck.Config,
+	txSigner types.Signer,
+	heavyCheckReader *HeavyCheckReader,
+	gasPowerCheckReader *GasPowerCheckReader,
+	proposalCheckReader *ProposalCheckReader,
+	store *Store,
+) *eventcheck.Checkers {
 	// create signatures checker
 	heavyCheck := heavycheck.New(heavyCheckCfg, heavyCheckReader, txSigner)
 
 	// create gaspower checker
 	gaspowerCheck := gaspowercheck.New(gasPowerCheckReader)
 
+	// create proposal checker
+	proposalCheck := proposalcheck.New(proposalCheckReader)
+
 	return &eventcheck.Checkers{
 		Basiccheck:    basiccheck.New(),
 		Epochcheck:    epochcheck.New(store),
 		Parentscheck:  parentscheck.New(),
+		Proposalcheck: proposalCheck,
 		Heavycheck:    heavyCheck,
 		Gaspowercheck: gaspowerCheck,
 	}

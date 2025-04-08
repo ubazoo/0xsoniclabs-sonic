@@ -117,3 +117,19 @@ func readEpochPubKeys(s *Store, epoch idx.Epoch) *ValidatorsPubKeys {
 		PubKeys: pubkeys,
 	}
 }
+
+type ProposalCheckReader struct {
+	validators atomic.Value
+}
+
+func NewProposalCheckReader(
+	validators *pos.Validators,
+) *ProposalCheckReader {
+	res := &ProposalCheckReader{}
+	res.validators.Store(validators)
+	return res
+}
+
+func (r *ProposalCheckReader) GetEpochValidators() *pos.Validators {
+	return r.validators.Load().(*pos.Validators)
+}
