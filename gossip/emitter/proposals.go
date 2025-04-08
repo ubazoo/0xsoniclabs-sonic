@@ -8,18 +8,47 @@ import (
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-const ProposalRetryInterval = 6 // number of frames between proposal attempts
+const ProposalRetryInterval = 8 // number of frames between proposal attempts
 
 func (em *Emitter) addProposal(
 	event *inter.MutableEventPayload,
 	sorted *transactionsByPriceAndNonce,
 ) error {
 
-	// TODO: fill in local status information on last-seen proposal
-	event.SetProposalEnvelope(&inter.ProposalEnvelope{})
+	lastSeenProposalNumber := idx.Block(0)
+	lastSeenProposalAttempt := uint32(0)
+	lastSeenProposalFrame := idx.Frame(0)
+	fmt.Printf("Adding proposals to event %v in frame %d\n", event.ID(), event.Frame())
+	for _, parent := range event.Parents() {
+		fmt.Printf("\tParent %v\n", parent)
+		payload := em.world.GetEventPayload(parent)
+		envelope := payload.ProposalEnvelope()
+		number := envelope.LastSeenProposalNumber
+		attempt := envelope.LastSeenProposalAttempt
+		frame := envelope.LastSeenProposalFrame
+		fmt.Printf("\t\tLast Proposal %d/%d @ frame=%d\n", number, attempt, frame)
+
+		if number > lastSeenProposalNumber || number == envelope.LastSeenProposalNumber && attempt > lastSeenProposalAttempt {
+			lastSeenProposalNumber = number
+			lastSeenProposalAttempt = attempt
+			lastSeenProposalFrame = frame
+		}
+
+	}
+
+	// By default, we fill the envelope with the latest seen proposal information.
+	// By adding this to all events, event validation can track the progress of
+	// the block-proposing based on events and their parents. It also enables
+	// the detection if invalid proposals.
+	event.SetProposalEnvelope(&inter.ProposalEnvelope{
+		LastSeenProposalNumber:  lastSeenProposalNumber,
+		LastSeenProposalAttempt: lastSeenProposalAttempt,
+		LastSeenProposalFrame:   lastSeenProposalFrame,
+	})
 
 	// TODO:
 	// 1. Check that the emitter has the right to make a proposal
@@ -42,11 +71,13 @@ func (em *Emitter) addProposal(
 	*/
 
 	// If the next expected block was already proposed, skip the proposal.
+	// TODO: this could be checked against the "last seen proposal" in the event
+	// envelope instead of a member field.
 	if nextBlock <= em.lastBlockProposedByThisEmitter {
 		return nil
 	}
 
-	// Check whether the emitter is the proposer for the next block.
+	// Check whether this emitter is the proposer for the next block.
 	proposer, err := inter.GetProposer(
 		em.validators,
 		nextBlock,
@@ -84,10 +115,15 @@ func (em *Emitter) addProposal(
 		fmt.Printf("\tTransaction with nonce %d\n", tx.Nonce())
 	}
 
-	// Remember the new block as proposed.
+	// Envelop and append the new proposal to the event.
 	event.SetProposalEnvelope(&inter.ProposalEnvelope{
-		Proposal: proposal,
+		LastSeenProposalNumber:  proposal.Number,
+		LastSeenProposalAttempt: proposal.Attempt,
+		LastSeenProposalFrame:   event.Frame(),
+		Proposal:                proposal,
 	})
+
+	// Remember the new block as proposed.
 	em.lastBlockProposedByThisEmitter = nextBlock
 	return nil
 }
