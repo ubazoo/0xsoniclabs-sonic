@@ -18,6 +18,9 @@ func (em *Emitter) addProposal(
 	sorted *transactionsByPriceAndNonce,
 ) error {
 
+	// TODO: fill in local status information on last-seen proposal
+	event.SetProposalEnvelope(&inter.ProposalEnvelope{})
+
 	// TODO:
 	// 1. Check that the emitter has the right to make a proposal
 	// 2. Derive meta-information for proposal
@@ -82,7 +85,9 @@ func (em *Emitter) addProposal(
 	}
 
 	// Remember the new block as proposed.
-	event.SetProposal(proposal)
+	event.SetProposalEnvelope(&inter.ProposalEnvelope{
+		Proposal: proposal,
+	})
 	em.lastBlockProposedByThisEmitter = nextBlock
 	return nil
 }

@@ -4,6 +4,13 @@ package sonic.inter.proto;
 
 option go_package = ".;pb";
 
+message ProposalEnvelope {
+    uint64 lastSeenProposalNumber = 1;
+    uint32 lastSeenProposalAttempt = 2;
+    uint32 lastSeenProposalFrame = 3;
+    Proposal proposal = 4;  // optional
+}
+
 // A proposal made by a validator for the content of a new block.
 message Proposal {
 

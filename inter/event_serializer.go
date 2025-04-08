@@ -76,7 +76,7 @@ func (e *Event) MarshalCSER(w *cser.Writer) error {
 	if e.Version() == 3 {
 		w.Bool(e.HasProposal())
 	}
-	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() || e.HasProposal() {
+	if e.AnyTxs() || e.AnyMisbehaviourProofs() || e.AnyBlockVotes() || e.AnyEpochVote() || e.Version() == 3 {
 		w.FixedBytes(e.PayloadHash().Bytes())
 	}
 	// extra
@@ -152,7 +152,7 @@ func eventUnmarshalCSER(r *cser.Reader, e *MutableEventPayload) (err error) {
 	anyBlockVotes := version == 1 && r.Bool()
 	hasProposal := version == 3 && r.Bool()
 	payloadHash := EmptyPayloadHash(version)
-	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes || hasProposal {
+	if anyTxs || anyMisbehaviourProofs || anyEpochVote || anyBlockVotes || version == 3 {
 		r.FixedBytes(payloadHash[:])
 		if payloadHash == EmptyPayloadHash(version) {
 			return cser.ErrNonCanonicalEncoding
@@ -256,10 +256,10 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 	if e.AnyBlockVotes() != (len(e.blockVotes.Votes) != 0) {
 		return ErrSerMalformedEvent
 	}
-	if e.HasProposal() != (e.proposal != nil) {
+	if (e.Version() == 3) != (e.ProposalEnvelope() != nil) {
 		return ErrSerMalformedEvent
 	}
-	if e.Version() != 3 && e.HasProposal() {
+	if e.Version() == 3 && e.HasProposal() && e.ProposalEnvelope().Proposal == nil {
 		return ErrSerMalformedEvent
 	}
 	err := e.Event.MarshalCSER(w)
@@ -301,8 +301,8 @@ func (e *EventPayload) MarshalCSER(w *cser.Writer) error {
 			return err
 		}
 	}
-	if e.HasProposal() {
-		b, err := e.Proposal().Serialize()
+	if envelope := e.ProposalEnvelope(); envelope != nil {
+		b, err := envelope.Serialize()
 		if err != nil {
 			return err
 		}
@@ -380,15 +380,15 @@ func (e *MutableEventPayload) UnmarshalCSER(r *cser.Reader) error {
 	}
 	e.blockVotes = bvs
 
-	// block proposals
-	if e.HasProposal() {
+	// block proposal envelopes
+	if e.Version() == 3 { // all version 3 events have an envelope
 		b := r.SliceBytes(ProtocolMaxMsgSize)
-		proposal := &Proposal{}
-		err := proposal.Deserialize(b)
+		envelope := &ProposalEnvelope{}
+		err := envelope.Deserialize(b)
 		if err != nil {
 			return err
 		}
-		e.proposal = proposal
+		e.proposalEnvelope = envelope
 	}
 
 	return nil

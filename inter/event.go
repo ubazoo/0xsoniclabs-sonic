@@ -59,7 +59,7 @@ type EventPayloadI interface {
 	EpochVote() LlrEpochVote
 	BlockVotes() LlrBlockVotes
 	MisbehaviourProofs() []MisbehaviourProof
-	Proposal() *Proposal
+	ProposalEnvelope() *ProposalEnvelope
 }
 
 var emptyPayloadHash1 = CalcPayloadHash(&MutableEventPayload{extEventData: extEventData{version: 1}})
@@ -111,7 +111,7 @@ type payloadData struct {
 	epochVote  LlrEpochVote
 	blockVotes LlrBlockVotes
 
-	proposal *Proposal
+	proposalEnvelope *ProposalEnvelope
 }
 
 type Event struct {
@@ -199,7 +199,7 @@ func (e *sigData) Sig() Signature { return e.sig }
 
 func (e *payloadData) Txs() types.Transactions { return e.txs }
 
-func (e *payloadData) Proposal() *Proposal { return e.proposal }
+func (e *payloadData) ProposalEnvelope() *ProposalEnvelope { return e.proposalEnvelope }
 
 func (e *payloadData) MisbehaviourProofs() []MisbehaviourProof { return e.misbehaviourProofs }
 
@@ -222,11 +222,7 @@ func CalcPayloadHash(e EventPayloadI) hash.Hash {
 		return hash.Of(hash.Of(CalcTxHash(e.Txs()).Bytes(), CalcMisbehaviourProofsHash(e.MisbehaviourProofs()).Bytes()).Bytes(), hash.Of(e.EpochVote().Hash().Bytes(), e.BlockVotes().Hash().Bytes()).Bytes())
 	}
 	if e.Version() == 3 {
-		proposal := e.Proposal()
-		if proposal == nil {
-			return hash.Hash{}
-		}
-		return proposal.Hash()
+		return e.ProposalEnvelope().Hash()
 	}
 	return CalcTxHash(e.Txs())
 }
@@ -256,9 +252,9 @@ func (e *MutableEventPayload) SetTxs(v types.Transactions) {
 	e.anyTxs = len(v) != 0
 }
 
-func (e *MutableEventPayload) SetProposal(p *Proposal) {
-	e.proposal = p
-	e.hasProposal = p != nil
+func (e *MutableEventPayload) SetProposalEnvelope(pe *ProposalEnvelope) {
+	e.proposalEnvelope = pe
+	e.hasProposal = pe.Proposal != nil
 }
 
 func (e *MutableEventPayload) SetMisbehaviourProofs(v []MisbehaviourProof) {
