@@ -10,6 +10,62 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestProposalEnvelope_Hash_IsShaOfFieldConcatenation(t *testing.T) {
+	envelope := &ProposalEnvelope{
+		LastSeenProposalNumber:  1,
+		LastSeenProposalAttempt: 2,
+		LastSeenProposalFrame:   3,
+	}
+
+	data := []byte{}
+	data = binary.BigEndian.AppendUint64(data, uint64(envelope.LastSeenProposalNumber))
+	data = binary.BigEndian.AppendUint32(data, envelope.LastSeenProposalAttempt)
+	data = binary.BigEndian.AppendUint32(data, uint32(envelope.LastSeenProposalFrame))
+	require.Equal(t, hash.Hash(sha256.Sum256(data)), envelope.Hash())
+
+	envelope.Proposal = &Proposal{
+		Number: 4,
+	}
+	proposalHash := envelope.Proposal.Hash()
+	data = append(data, proposalHash[:]...)
+	require.Equal(t, hash.Hash(sha256.Sum256(data)), envelope.Hash())
+}
+
+func TestProposalEnvelope_CanBeSerializedAndRestored(t *testing.T) {
+	for _, proposal := range []*Proposal{nil, {}} {
+		require := require.New(t)
+		original := &ProposalEnvelope{
+			LastSeenProposalNumber:  1,
+			LastSeenProposalAttempt: 2,
+			LastSeenProposalFrame:   3,
+			Proposal:                proposal,
+		}
+
+		data, err := original.Serialize()
+		require.NoError(err)
+		require.NotEmpty(data)
+		restored := &ProposalEnvelope{}
+		err = restored.Deserialize(data)
+		require.NoError(err)
+
+		// Check individual fields. Note: a full Deep-Equal comparison is not
+		// possible because transactions have insignificant meta-information that
+		// is not serialized and restored.
+		require.Equal(original.LastSeenProposalNumber, restored.LastSeenProposalNumber)
+		require.Equal(original.LastSeenProposalAttempt, restored.LastSeenProposalAttempt)
+		require.Equal(original.LastSeenProposalFrame, restored.LastSeenProposalFrame)
+
+		if original.Proposal == nil {
+			require.Nil(restored.Proposal)
+		} else {
+			require.NotNil(restored.Proposal)
+			require.Equal(original.Proposal.Number, restored.Proposal.Number)
+		}
+
+		require.Equal(original.Hash(), restored.Hash())
+	}
+}
+
 func TestProposal_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 
 	// The procedure of computing the hash of a proposal is critical for

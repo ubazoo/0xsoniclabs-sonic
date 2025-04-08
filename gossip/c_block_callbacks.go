@@ -171,7 +171,7 @@ func consensusCallbackBeginBlockFn(
 					hasBlock := false
 					for _, eventId := range confirmedEvents {
 						event := store.GetEventPayload(eventId)
-						proposal := event.Proposal()
+						proposal := event.ProposalEnvelope().Proposal
 						if proposal != nil && proposal.Number == blockCtx.Idx {
 							if emitters != nil {
 								for _, emitter := range *emitters {
@@ -303,7 +303,7 @@ func consensusCallbackBeginBlockFn(
 						proposals := []*inter.Proposal{}
 						for _, e := range blockEvents {
 							if e.HasProposal() {
-								proposals = append(proposals, e.Proposal())
+								proposals = append(proposals, e.ProposalEnvelope().Proposal)
 							}
 						}
 						fmt.Printf("PROCESS: found %d proposal(s)\n", len(proposals))

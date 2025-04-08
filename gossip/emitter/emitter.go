@@ -456,6 +456,25 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 		return nil, err
 	}
 
+	// --- Debug ---
+
+	if false {
+		data, err := event.MarshalBinary()
+		if err != nil {
+			panic("failed to marshal event: " + err.Error())
+		}
+		var restored inter.EventPayload
+		if err := restored.UnmarshalBinary(data); err != nil {
+			restored.UnmarshalBinary(data)
+			panic("failed to unmarshal event: " + err.Error())
+		}
+		if event.HashToSign() != restored.HashToSign() {
+			panic("failed to restore event hash")
+		}
+	}
+
+	// --- /Debug ---
+
 	// set mutEvent name for debug
 	em.nameEventForDebug(event)
 
