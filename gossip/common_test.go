@@ -211,6 +211,7 @@ func newTestEnv(firstEpoch idx.Epoch, validatorsNum idx.Validator, tb testing.TB
 		em.Start()
 	}
 
+	env.feed.Start(store.evm)
 	env.blockProcTasks.Start(1)
 	env.verWatcher.Start()
 
@@ -218,6 +219,7 @@ func newTestEnv(firstEpoch idx.Epoch, validatorsNum idx.Validator, tb testing.TB
 }
 
 func (env *testEnv) Close() error {
+	env.feed.Stop()
 	env.verWatcher.Stop()
 	if err := env.store.Close(); err != nil {
 		return fmt.Errorf("failed to close test store; %w", err)
