@@ -19,18 +19,20 @@ func (em *Emitter) addProposal(
 	sorted *transactionsByPriceAndNonce,
 ) error {
 
+	const enableProposalDebugPrints = false
+
 	lastSeenProposalNumber := idx.Block(0)
 	lastSeenProposalAttempt := uint32(0)
 	lastSeenProposalFrame := idx.Frame(0)
-	fmt.Printf("Adding proposals to event %v in frame %d\n", event.ID(), event.Frame())
+	//fmt.Printf("Adding proposals to event %v in frame %d\n", event.ID(), event.Frame())
 	for _, parent := range event.Parents() {
-		fmt.Printf("\tParent %v\n", parent)
+		//fmt.Printf("\tParent %v\n", parent)
 		payload := em.world.GetEventPayload(parent)
 		envelope := payload.ProposalEnvelope()
 		number := envelope.LastSeenProposalNumber
 		attempt := envelope.LastSeenProposalAttempt
 		frame := envelope.LastSeenProposalFrame
-		fmt.Printf("\t\tLast Proposal %d/%d @ frame=%d\n", number, attempt, frame)
+		//fmt.Printf("\t\tLast Proposal %d/%d @ frame=%d\n", number, attempt, frame)
 
 		if number > lastSeenProposalNumber || number == envelope.LastSeenProposalNumber && attempt > lastSeenProposalAttempt {
 			lastSeenProposalNumber = number
@@ -87,10 +89,12 @@ func (em *Emitter) addProposal(
 		return err
 	}
 
-	fmt.Printf(
-		"validator=%d, starting proposal for block %d/%d as part of frame %d (last proposal at frame %d)\n",
-		em.config.Validator.ID, nextBlock, attempt, event.Frame(), lastProposerFrame,
-	)
+	if enableProposalDebugPrints {
+		fmt.Printf(
+			"validator=%d, starting proposal for block %d/%d as part of frame %d (last proposal at frame %d)\n",
+			em.config.Validator.ID, nextBlock, attempt, event.Frame(), lastProposerFrame,
+		)
+	}
 
 	// Create the proposal for the next block.
 	proposal := &inter.Proposal{
@@ -107,12 +111,14 @@ func (em *Emitter) addProposal(
 	}
 
 	// TODO: remove
-	fmt.Printf(
-		"validator=%d, completed proposal for block %d/%d with %d transactions\n",
-		em.config.Validator.ID, nextBlock, attempt, len(proposal.Transactions),
-	)
-	for _, tx := range proposal.Transactions {
-		fmt.Printf("\tTransaction with nonce %d\n", tx.Nonce())
+	if enableProposalDebugPrints {
+		fmt.Printf(
+			"validator=%d, completed proposal for block %d/%d with %d transactions\n",
+			em.config.Validator.ID, nextBlock, attempt, len(proposal.Transactions),
+		)
+		for _, tx := range proposal.Transactions {
+			fmt.Printf("\tTransaction with nonce %d\n", tx.Nonce())
+		}
 	}
 
 	// Envelop and append the new proposal to the event.
@@ -166,9 +172,11 @@ func (em *Emitter) addTransactionsToProposal(
 	for tx, _ := sorted.Peek(); tx != nil; tx, _ = sorted.Peek() {
 		resolvedTx := tx.Resolve()
 
-		sender, _ := types.Sender(em.world.TxSigner, resolvedTx)
-		nonce := stateDb.GetNonce(sender)
-		fmt.Printf("Candidate transaction from sender %s, tx-nonce %d, db-nonce %d, ...\n", sender.Hex(), resolvedTx.Nonce(), nonce)
+		/*
+			sender, _ := types.Sender(em.world.TxSigner, resolvedTx)
+			nonce := stateDb.GetNonce(sender)
+			fmt.Printf("Candidate transaction from sender %s, tx-nonce %d, db-nonce %d, ...\n", sender.Hex(), resolvedTx.Nonce(), nonce)
+		*/
 
 		// check transaction epoch rules (tx type, gas price)
 		if epochcheck.CheckTxs(types.Transactions{resolvedTx}, rules) != nil {
