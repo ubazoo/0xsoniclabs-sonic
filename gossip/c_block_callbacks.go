@@ -299,6 +299,8 @@ func consensusCallbackBeginBlockFn(
 					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
 					orderedTxs := scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
 
+					const enableDebugPrints = false
+
 					if es.Rules.Upgrades.Allegro {
 						proposals := []*inter.Proposal{}
 						for _, e := range blockEvents {
@@ -306,11 +308,15 @@ func consensusCallbackBeginBlockFn(
 								proposals = append(proposals, e.ProposalEnvelope().Proposal)
 							}
 						}
-						fmt.Printf("PROCESS: found %d proposal(s)\n", len(proposals))
+						if enableDebugPrints {
+							fmt.Printf("PROCESS: found %d proposal(s)\n", len(proposals))
+						}
 						// TODO: there may be more than 1 proposals; conflicts
 						// and invalid proposals must be detected and handled.
 						if len(proposals) > 0 {
-							fmt.Printf("PROCESS: got proposal for block %d, wanted %d\n", proposals[0].Number, blockCtx.Idx)
+							if enableDebugPrints {
+								fmt.Printf("PROCESS: got proposal for block %d, wanted %d\n", proposals[0].Number, blockCtx.Idx)
+							}
 							if proposals[0].Number == blockCtx.Idx {
 								orderedTxs = proposals[0].Transactions
 							}
@@ -320,18 +326,24 @@ func consensusCallbackBeginBlockFn(
 					for i, receipt := range evmProcessor.Execute(orderedTxs) {
 						if receipt != nil { // < nil if skipped
 							blockBuilder.AddTransaction(orderedTxs[i], receipt)
-							fmt.Printf("\tCompleted transaction with nonce %d\n", orderedTxs[i].Nonce())
+							if enableDebugPrints {
+								fmt.Printf("\tCompleted transaction with nonce %d\n", orderedTxs[i].Nonce())
+							}
 						} else {
-							fmt.Printf("\tSkipped transaction with nonce %d\n", orderedTxs[i].Nonce())
+							if enableDebugPrints {
+								fmt.Printf("\tSkipped transaction with nonce %d\n", orderedTxs[i].Nonce())
+							}
 						}
 					}
 
 					evmBlock, skippedTxs, allReceipts := evmProcessor.Finalize()
 
 					// TODO: remove this check; it is just here for testing
-					if len(skippedTxs) > 0 {
-						panic("skipped transactions should be handled in the block builder")
-					}
+					/*
+						if len(skippedTxs) > 0 {
+							panic("skipped transactions should be handled in the block builder")
+						}
+					*/
 
 					// Add results of the transaction processing to the block.
 					blockBuilder.
@@ -389,7 +401,9 @@ func consensusCallbackBeginBlockFn(
 					bs = txListener.Finalize() // TODO: refactor to not mutate the bs
 					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
 					// At this point, block state is finalized
-					fmt.Printf("PROCESS: Completed block %d\n", blockCtx.Idx)
+					if enableDebugPrints {
+						fmt.Printf("PROCESS: Completed block %d\n", blockCtx.Idx)
+					}
 					// Build index for not skipped txs
 					if txIndex {
 						for _, tx := range evmBlock.Transactions {
