@@ -3,8 +3,10 @@ package tests
 import (
 	"context"
 	"math/big"
+	"strings"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -28,37 +30,51 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 	chainId, err := client.ChainID(context.Background())
 	require.NoError(t, err, "failed to get chain ID::")
 
-	// One authorization is required for SetCodeTx
-	auth, err := types.SignSetCode(net.GetSessionSponsor().PrivateKey,
-		types.SetCodeAuthorization{
-			ChainID: *uint256.MustFromBig(chainId),
-			Address: net.GetSessionSponsor().Address(),
-			Nonce:   0,
-		})
-	require.NoError(t, err)
-
-	testTransactions := map[string]types.TxData{
-		"legacy tx":               &types.LegacyTx{},
-		"access list no entries ": &types.AccessListTx{},
-		"access list tx with one entry": &types.AccessListTx{
-			AccessList: []types.AccessTuple{
-				{Address: common.Address{0x42}, StorageKeys: []common.Hash{common.Hash{0x42}}},
-			},
+	testTransactions := map[string]func(testing.TB, *Account) types.TxData{
+		"legacy tx": func(testing.TB, *Account) types.TxData {
+			return &types.LegacyTx{}
 		},
-		"dynamic fee tx": &types.DynamicFeeTx{},
-		"blob tx":        &types.BlobTx{},
-		"set code tx": &types.SetCodeTx{
-			AuthList: []types.SetCodeAuthorization{auth, auth, auth},
+		"access list no entries ": func(testing.TB, *Account) types.TxData {
+			return &types.AccessListTx{}
+		},
+		"access list tx with one entry": func(testing.TB, *Account) types.TxData {
+			return &types.AccessListTx{
+				AccessList: []types.AccessTuple{
+					{Address: common.Address{0x42}, StorageKeys: []common.Hash{common.Hash{0x42}}},
+				},
+			}
+		},
+		"dynamic fee tx": func(testing.TB, *Account) types.TxData {
+			return &types.DynamicFeeTx{}
+		},
+		"blob tx": func(testing.TB, *Account) types.TxData {
+			return &types.BlobTx{}
+		},
+		"set code tx": func(t testing.TB, account *Account) types.TxData {
+
+			// One authorization is required for SetCodeTx
+			auth, err := types.SignSetCode(account.PrivateKey,
+				types.SetCodeAuthorization{
+					ChainID: *uint256.MustFromBig(chainId),
+					Address: net.GetSessionSponsor().Address(),
+					Nonce:   0,
+				})
+			require.NoError(t, err)
+
+			return &types.SetCodeTx{
+				AuthList: []types.SetCodeAuthorization{auth},
+			}
 		},
 	}
 
-	for name, tx := range testTransactions {
+	for name, txFactory := range testTransactions {
 		t.Run(name, func(t *testing.T) {
 
 			t.Run("is rejected with insufficient balance", func(t *testing.T) {
 				account := NewAccount()
 
-				txData := setTransactionDefaults(t, net, tx, account)
+				txData := txFactory(t, account)
+				txData = setTransactionDefaults(t, net, txData, account)
 				tx := signTransaction(t, chainId, txData, account)
 				cost := tx.Cost()
 
@@ -72,10 +88,10 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 			})
 
 			t.Run("is rejected with nonce too low", func(t *testing.T) {
-
 				account := NewAccount()
 
-				txData := setTransactionDefaults(t, net, tx, account)
+				txData := txFactory(t, account)
+				txData = setTransactionDefaults(t, net, txData, account)
 				tx := signTransaction(t, chainId, txData, account)
 
 				// provide enough funds for successful execution
@@ -83,16 +99,27 @@ func TestRejectedTx_TransactionsAreRejectedBecauseOfAccountState(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-				// execute once to increment nonce
+				// submit transaction once
 				receipt, err = net.Run(tx)
 				require.NoError(t, err)
-				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status,
-					"first execution should be successful")
+				require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 
-				// transaction has been executed, this is not a replacement
-				// but a new submission with nonce too low
-				_, err = net.Run(tx)
-				require.ErrorContains(t, err, "nonce too low")
+				for {
+					// submit transaction again
+					_, err := net.Run(tx)
+					require.Error(t, err)
+
+					// Pool may take longer to purge the transaction after its execution.
+					// If the transaction is still in the pool, try again
+					if strings.Contains(err.Error(), evmcore.ErrAlreadyKnown.Error()) {
+						continue
+					}
+
+					// eventually the transaction has been purged from the pool
+					// and any subsequent submission with the same nonce is rejected
+					require.ErrorContains(t, err, evmcore.ErrNonceTooLow.Error())
+					break
+				}
 			})
 		})
 	}
