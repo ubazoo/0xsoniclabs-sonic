@@ -31,8 +31,7 @@ type Proposal struct {
 // Hash computes a cryptographic hash of the proposal. The hash can be used to
 // sign and verify the proposal.
 func (p *Proposal) Hash() hash.Hash {
-	size := 8 + 4 + 32 + 8 + 32 + 32*len(p.Transactions)
-	data := make([]byte, 0, size)
+	data := []byte{}
 	data = binary.BigEndian.AppendUint64(data, uint64(p.Number))
 	data = binary.BigEndian.AppendUint32(data, uint32(p.Attempt))
 	data = append(data, p.ParentHash[:]...)
