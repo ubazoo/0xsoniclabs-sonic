@@ -1,4 +1,4 @@
-package gossip
+package scrambler
 
 import (
 	"cmp"
@@ -655,7 +655,7 @@ func TestGetExecutionOrder_ScramblerIsUsedOnlyForSonic(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			txs := getExecutionOrder(input, signer, test.isSonic)
+			txs := GetExecutionOrder(input, signer, test.isSonic)
 			// one transaction is removed from the list
 			if got, want := len(txs), test.expectedLen; got != want {
 				t.Errorf("unexpected number of transasctions, got: %d, want: %d", got, want)

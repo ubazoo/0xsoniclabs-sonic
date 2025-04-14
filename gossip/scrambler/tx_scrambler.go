@@ -1,12 +1,13 @@
-package gossip
+package scrambler
 
 import (
 	"bytes"
 	"cmp"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"math/big"
 	"slices"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // ScramblerEntry stores meta information about transaction for sorting and filtering them.
@@ -43,11 +44,11 @@ func (tx *scramblerTransaction) Sender() common.Address {
 	return tx.sender
 }
 
-// getExecutionOrder returns correct order of the transactions.
+// GetExecutionOrder returns correct order of the transactions.
 // If Sonic is enabled, the tx scrambler is used, otherwise the
 // order stays unchanged. If signer is unable to derive sender for
 // a transaction, this transaction is not excluded from the final list.
-func getExecutionOrder(unorderedTxs types.Transactions, signer types.Signer, isSonic bool) types.Transactions {
+func GetExecutionOrder(unorderedTxs types.Transactions, signer types.Signer, isSonic bool) types.Transactions {
 	// Don't use scrambler if Sonic is not enabled
 	if !isSonic {
 		return unorderedTxs
