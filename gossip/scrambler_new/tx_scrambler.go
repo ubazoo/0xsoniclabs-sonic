@@ -31,7 +31,7 @@ func (tx *scramblerTransaction) Sender() common.Address {
 	return tx.sender
 }
 
-func Scramble(seed uint64, signer types.Signer, transactions []*types.Transaction) []*types.Transaction {
+func Scramble(signer types.Signer, seed uint64, transactions []*types.Transaction) []*types.Transaction {
 	inputTransactions := make([]ScramblerEntry, 0, len(transactions))
 	for _, tx := range transactions {
 		sender, err := types.Sender(signer, tx)

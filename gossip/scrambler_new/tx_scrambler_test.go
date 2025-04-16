@@ -79,7 +79,7 @@ func TestScrambler_EndToEndTest(t *testing.T) {
 		transactions = append(transactions, tx)
 	}
 
-	transactions = Scramble(42, signer, transactions)
+	transactions = Scramble(signer, 42, transactions)
 	if len(transactions) != numTransactions {
 		t.Fatalf("expected %d transactions, got %d", numTransactions, len(transactions))
 	}

@@ -26,7 +26,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/blockproc/verwatcher"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/gossip/evmstore"
-	scrambler "github.com/0xsoniclabs/sonic/gossip/old_scrambler"
+	"github.com/0xsoniclabs/sonic/gossip/scrambler"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/opera"
