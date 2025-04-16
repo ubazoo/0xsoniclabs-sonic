@@ -12,14 +12,14 @@ import (
 
 func TestProposalEnvelope_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 	envelope := &ProposalEnvelope{
-		LastSeenProposalNumber:  1,
-		LastSeenProposalAttempt: 2,
-		LastSeenProposalFrame:   3,
+		LastSeenProposalTurn:  1,
+		LastSeenProposedBlock: 2,
+		LastSeenProposalFrame: 3,
 	}
 
 	data := []byte{}
-	data = binary.BigEndian.AppendUint64(data, uint64(envelope.LastSeenProposalNumber))
-	data = binary.BigEndian.AppendUint32(data, envelope.LastSeenProposalAttempt)
+	data = binary.BigEndian.AppendUint32(data, uint32(envelope.LastSeenProposalTurn))
+	data = binary.BigEndian.AppendUint64(data, uint64(envelope.LastSeenProposedBlock))
 	data = binary.BigEndian.AppendUint32(data, uint32(envelope.LastSeenProposalFrame))
 	require.Equal(t, hash.Hash(sha256.Sum256(data)), envelope.Hash())
 
@@ -35,10 +35,10 @@ func TestProposalEnvelope_CanBeSerializedAndRestored(t *testing.T) {
 	for _, proposal := range []*Proposal{nil, {}} {
 		require := require.New(t)
 		original := &ProposalEnvelope{
-			LastSeenProposalNumber:  1,
-			LastSeenProposalAttempt: 2,
-			LastSeenProposalFrame:   3,
-			Proposal:                proposal,
+			LastSeenProposalTurn:  1,
+			LastSeenProposedBlock: 2,
+			LastSeenProposalFrame: 3,
+			Proposal:              proposal,
 		}
 
 		data, err := original.Serialize()
@@ -51,8 +51,8 @@ func TestProposalEnvelope_CanBeSerializedAndRestored(t *testing.T) {
 		// Check individual fields. Note: a full Deep-Equal comparison is not
 		// possible because transactions have insignificant meta-information that
 		// is not serialized and restored.
-		require.Equal(original.LastSeenProposalNumber, restored.LastSeenProposalNumber)
-		require.Equal(original.LastSeenProposalAttempt, restored.LastSeenProposalAttempt)
+		require.Equal(original.LastSeenProposalTurn, restored.LastSeenProposalTurn)
+		require.Equal(original.LastSeenProposedBlock, restored.LastSeenProposedBlock)
 		require.Equal(original.LastSeenProposalFrame, restored.LastSeenProposalFrame)
 
 		if original.Proposal == nil {
@@ -76,8 +76,7 @@ func TestProposal_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 
 	// TODO: add a fuzzer test for this
 	proposal := &Proposal{
-		Number:     1,
-		Attempt:    2,
+		Number:     2,
 		ParentHash: [32]byte{0: 1, 31: 2},
 		Time:       3,
 		PrevRandao: [32]byte{0: 3, 21: 4},
@@ -90,7 +89,6 @@ func TestProposal_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 	hash := func(proposal *Proposal) hash.Hash {
 		data := []byte{}
 		data = binary.BigEndian.AppendUint64(data, uint64(proposal.Number))
-		data = binary.BigEndian.AppendUint32(data, proposal.Attempt)
 		data = append(data, proposal.ParentHash[:]...)
 		data = binary.BigEndian.AppendUint64(data, uint64(proposal.Time))
 		data = append(data, proposal.PrevRandao[:]...)
@@ -108,9 +106,6 @@ func TestProposal_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 	tests := map[string]func(*Proposal){
 		"change number": func(p *Proposal) {
 			p.Number = p.Number + 1
-		},
-		"change attempt": func(p *Proposal) {
-			p.Attempt = p.Attempt + 1
 		},
 		"change parent hash": func(p *Proposal) {
 			p.ParentHash[0] = p.ParentHash[0] + 1
@@ -161,10 +156,9 @@ func TestProposal_CanBeSerializedAndRestored(t *testing.T) {
 	require := require.New(t)
 	original := &Proposal{
 		Number:     1,
-		Attempt:    2,
 		ParentHash: [32]byte{2},
-		Time:       4,
-		PrevRandao: [32]byte{5},
+		Time:       3,
+		PrevRandao: [32]byte{4},
 		Transactions: []*types.Transaction{
 			types.NewTx(&types.LegacyTx{Nonce: 1}),
 			types.NewTx(&types.LegacyTx{Nonce: 2}),
@@ -182,7 +176,6 @@ func TestProposal_CanBeSerializedAndRestored(t *testing.T) {
 	// possible because transactions have insignificant meta-information that
 	// is not serialized and restored.
 	require.Equal(original.Number, restored.Number)
-	require.Equal(original.Attempt, restored.Attempt)
 	require.Equal(original.ParentHash, restored.ParentHash)
 	require.Equal(original.Time, restored.Time)
 	require.Equal(original.PrevRandao, restored.PrevRandao)

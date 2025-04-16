@@ -5,8 +5,8 @@ package sonic.inter.proto;
 option go_package = ".;pb";
 
 message ProposalEnvelope {
-    uint64 lastSeenProposalNumber = 1;
-    uint32 lastSeenProposalAttempt = 2;
+    uint32 lastSeenProposalTurn = 1;
+    uint64 lastSeenProposedBlock = 2;
     uint32 lastSeenProposalFrame = 3;
     Proposal proposal = 4;  // optional
 }
@@ -14,17 +14,15 @@ message ProposalEnvelope {
 // A proposal made by a validator for the content of a new block.
 message Proposal {
 
-    uint64 number = 1;
+    uint64 number = 1; // < the block number proposed
 
-    uint32 attempt = 2;
-
-    uint64 timestamp = 3;  // Unix nano-second timestamp
+    uint64 timestamp = 2;  // Unix nano-second timestamp
     
-    bytes parent_hash = 4;
+    bytes parent_hash = 3;
 
-    bytes prev_randao = 5;
+    bytes prev_randao = 4;
 
-    repeated Transaction transactions = 6;
+    repeated Transaction transactions = 5;
 }
 
 // TODO: consider moving this to a separate file

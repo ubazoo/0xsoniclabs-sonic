@@ -10,19 +10,16 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 )
 
-// GetProposer returns the designated proposer for a given block number and attempt.
+// GetProposer returns the designated proposer for a given turn.
 // The proposer is determined through deterministic sampling of validators
 // proportional to the validator's stake.
 func GetProposer(
 	validators *pos.Validators,
-	number idx.Block,
-	attempt uint32,
+	turn Turn,
 ) (idx.ValidatorID, error) {
 
-	// TODO: consider excluding first proposer from second attempt mapping
-	data := make([]byte, 0, 8+4)
-	data = binary.BigEndian.AppendUint64(data, uint64(number))
-	data = binary.BigEndian.AppendUint32(data, attempt)
+	data := make([]byte, 0, 4)
+	data = binary.BigEndian.AppendUint32(data, uint32(turn))
 	hash := sha256.Sum256(data)
 
 	limit := new(big.Rat).Quo(

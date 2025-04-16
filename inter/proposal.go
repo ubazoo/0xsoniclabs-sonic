@@ -13,17 +13,17 @@ import (
 )
 
 type ProposalEnvelope struct {
-	LastSeenProposalNumber  idx.Block
-	LastSeenProposalAttempt uint32
-	LastSeenProposalFrame   idx.Frame
-	Proposal                *Proposal
+	LastSeenProposalTurn  Turn
+	LastSeenProposedBlock idx.Block
+	LastSeenProposalFrame idx.Frame
+	Proposal              *Proposal
 }
 
 func (e *ProposalEnvelope) Hash() hash.Hash {
-	size := 8 + 4 + 4 + 32
+	size := 4 + 8 + 4 + 32
 	data := make([]byte, 0, size)
-	data = binary.BigEndian.AppendUint64(data, uint64(e.LastSeenProposalNumber))
-	data = binary.BigEndian.AppendUint32(data, e.LastSeenProposalAttempt)
+	data = binary.BigEndian.AppendUint32(data, uint32(e.LastSeenProposalTurn))
+	data = binary.BigEndian.AppendUint64(data, uint64(e.LastSeenProposedBlock))
 	data = binary.BigEndian.AppendUint32(data, uint32(e.LastSeenProposalFrame))
 	if e.Proposal != nil {
 		hash := e.Proposal.Hash()
@@ -42,10 +42,10 @@ func (e *ProposalEnvelope) Serialize() ([]byte, error) {
 		proposal = p
 	}
 	return proto.Marshal(&pb.ProposalEnvelope{
-		LastSeenProposalNumber:  uint64(e.LastSeenProposalNumber),
-		LastSeenProposalAttempt: e.LastSeenProposalAttempt,
-		LastSeenProposalFrame:   uint32(e.LastSeenProposalFrame),
-		Proposal:                proposal,
+		LastSeenProposalTurn:  uint32(e.LastSeenProposalTurn),
+		LastSeenProposedBlock: uint64(e.LastSeenProposedBlock),
+		LastSeenProposalFrame: uint32(e.LastSeenProposalFrame),
+		Proposal:              proposal,
 	})
 }
 
@@ -54,8 +54,8 @@ func (e *ProposalEnvelope) Deserialize(data []byte) error {
 	if err := proto.Unmarshal(data, &pb); err != nil {
 		return err
 	}
-	e.LastSeenProposalNumber = idx.Block(pb.LastSeenProposalNumber)
-	e.LastSeenProposalAttempt = pb.LastSeenProposalAttempt
+	e.LastSeenProposalTurn = Turn(pb.LastSeenProposalTurn)
+	e.LastSeenProposedBlock = idx.Block(pb.LastSeenProposedBlock)
 	e.LastSeenProposalFrame = idx.Frame(pb.LastSeenProposalFrame)
 	if pb.Proposal != nil {
 		p := &Proposal{}
@@ -78,7 +78,6 @@ func (e *ProposalEnvelope) Deserialize(data []byte) error {
 // validators for validation and inclusion in the blockchain.
 type Proposal struct {
 	Number       idx.Block
-	Attempt      uint32
 	ParentHash   common.Hash
 	Time         Timestamp
 	PrevRandao   common.Hash
@@ -90,10 +89,9 @@ type Proposal struct {
 // Hash computes a cryptographic hash of the proposal. The hash can be used to
 // sign and verify the proposal.
 func (p *Proposal) Hash() hash.Hash {
-	size := 8 + 4 + 32 + 8 + 32 + 32*len(p.Transactions)
+	size := 8 + 32 + 8 + 32 + 32*len(p.Transactions)
 	data := make([]byte, 0, size)
 	data = binary.BigEndian.AppendUint64(data, uint64(p.Number))
-	data = binary.BigEndian.AppendUint32(data, uint32(p.Attempt))
 	data = append(data, p.ParentHash[:]...)
 	data = binary.BigEndian.AppendUint64(data, uint64(p.Time))
 	data = append(data, p.PrevRandao[:]...)
@@ -134,7 +132,6 @@ func (p *Proposal) toProto() (*pb.Proposal, error) {
 
 	return &pb.Proposal{
 		Number:       uint64(p.Number),
-		Attempt:      p.Attempt,
 		ParentHash:   p.ParentHash[:],
 		Timestamp:    uint64(p.Time),
 		PrevRandao:   p.PrevRandao[:],
@@ -145,7 +142,6 @@ func (p *Proposal) toProto() (*pb.Proposal, error) {
 func (p *Proposal) fromProto(pb *pb.Proposal) error {
 	// Restore individual fields.
 	p.Number = idx.Block(pb.Number)
-	p.Attempt = pb.Attempt
 	copy(p.ParentHash[:], pb.ParentHash)
 	p.Time = Timestamp(pb.Timestamp)
 	copy(p.PrevRandao[:], pb.PrevRandao)

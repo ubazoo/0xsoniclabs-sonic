@@ -15,8 +15,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
-const ProposalRetryInterval = 8 // number of frames between proposal attempts
-
 func (em *Emitter) addProposal(
 	event *inter.MutableEventPayload,
 	sorted *transactionsByPriceAndNonce,
@@ -24,26 +22,29 @@ func (em *Emitter) addProposal(
 
 	const enableProposalDebugPrints = true
 
-	lastSeenProposalNumber := idx.Block(0)
-	lastSeenProposalAttempt := uint32(0)
+	lastSeenProposalTurn := inter.Turn(0)
+	lastSeenProposedBlock := idx.Block(0)
 	lastSeenProposalFrame := idx.Frame(0)
 	//fmt.Printf("Adding proposals to event %v in frame %d\n", event.ID(), event.Frame())
-	parents := event.Parents()
-	if len(parents) == 0 {
-		lastSeenProposalNumber = em.world.GetEpochStartBlock(event.Epoch())
+	if parents := event.Parents(); len(parents) == 0 {
+		lastSeenProposedBlock = em.world.GetEpochStartBlock(event.Epoch())
 	} else {
 		for _, parent := range parents {
 			//fmt.Printf("\tParent %v\n", parent)
 			payload := em.world.GetEventPayload(parent)
 			envelope := payload.ProposalEnvelope()
-			number := envelope.LastSeenProposalNumber
-			attempt := envelope.LastSeenProposalAttempt
+			turn := envelope.LastSeenProposalTurn
+			block := envelope.LastSeenProposedBlock
 			frame := envelope.LastSeenProposalFrame
 			//fmt.Printf("\t\tLast Proposal %d/%d @ frame=%d\n", number, attempt, frame)
 
-			if number > lastSeenProposalNumber || number == envelope.LastSeenProposalNumber && attempt > lastSeenProposalAttempt {
-				lastSeenProposalNumber = number
-				lastSeenProposalAttempt = attempt
+			if turn > lastSeenProposalTurn {
+				lastSeenProposalTurn = turn
+			}
+			if block > lastSeenProposedBlock {
+				lastSeenProposedBlock = block
+			}
+			if frame > lastSeenProposalFrame {
 				lastSeenProposalFrame = frame
 			}
 		}
@@ -54,45 +55,43 @@ func (em *Emitter) addProposal(
 	// the block-proposing based on events and their parents. It also enables
 	// the detection if invalid proposals.
 	event.SetProposalEnvelope(&inter.ProposalEnvelope{
-		LastSeenProposalNumber:  lastSeenProposalNumber,
-		LastSeenProposalAttempt: lastSeenProposalAttempt,
-		LastSeenProposalFrame:   lastSeenProposalFrame,
+		LastSeenProposalTurn:  lastSeenProposalTurn,
+		LastSeenProposedBlock: lastSeenProposedBlock,
+		LastSeenProposalFrame: lastSeenProposalFrame,
 	})
 
-	// TODO:
-	// 1. Check that the emitter has the right to make a proposal
-	// 2. Derive meta-information for proposal
-	// 3. Create list of transactions for proposal
-
-	// Get the latest block known by this node.
-	latest := em.world.GetLatestBlock()
-
-	// Get next expected block number.
-	nextBlock := idx.Block(latest.Number + 1)
-
-	// If the next expected block was already proposed, skip the proposal.
-	if nextBlock <= lastSeenProposalNumber {
-		return nil
-	}
-
-	// Get expected attempt for the next block.
-	lastProposerFrame := lastSeenProposalFrame
-	attempt := uint32(event.Frame()-lastProposerFrame) / ProposalRetryInterval
-
-	// Check whether this emitter is the proposer for the next block.
-	proposer, err := inter.GetProposer(
-		em.validators,
-		nextBlock,
-		attempt,
-	)
+	// Check whether it is this emitter's turn to propose a new block.
+	nextTurn := lastSeenProposalTurn + 1
+	proposer, err := inter.GetProposer(em.validators, nextTurn)
 	if err != nil || proposer != em.config.Validator.ID {
 		return err
 	}
 
+	// Check that enough time has passed for the next proposal.
+	latest := em.world.GetLatestBlock()
+	nextBlock := idx.Block(latest.Number + 1)
+	valid := inter.IsValidTurnProgression(
+		inter.ProposalSummary{
+			Turn:  lastSeenProposalTurn,
+			Block: lastSeenProposedBlock,
+			Frame: lastSeenProposalFrame,
+		},
+		inter.ProposalSummary{
+			Turn:  nextTurn,
+			Block: nextBlock,
+			Frame: event.Frame(),
+		},
+	)
+	if !valid {
+		return nil
+	}
+
+	// --- Build a new Proposal ---
+
 	if enableProposalDebugPrints {
 		fmt.Printf(
-			"validator=%d, starting proposal for block %d/%d as part of frame %d/%d @ t=%v (last proposal at frame %d)\n",
-			em.config.Validator.ID, nextBlock, attempt, event.Epoch(), event.Frame(), event.CreationTime().Time(), lastProposerFrame,
+			"validator=%d, starting proposal for turn %d, block %d as part of epoch %d, frame %d @ t=%v (last proposal at frame %d)\n",
+			em.config.Validator.ID, nextTurn, nextBlock, event.Epoch(), event.Frame(), event.CreationTime().Time(), lastSeenProposalFrame,
 		)
 	}
 
@@ -116,7 +115,6 @@ func (em *Emitter) addProposal(
 	// Create the proposal for the next block.
 	proposal := &inter.Proposal{
 		Number:     nextBlock,
-		Attempt:    attempt,
 		ParentHash: latest.Hash(),
 		Time:       nextBlockTime,
 		// PrevRandao: -- compute next randao mix based on predecessor --
@@ -136,8 +134,8 @@ func (em *Emitter) addProposal(
 	// TODO: remove
 	if enableProposalDebugPrints {
 		fmt.Printf(
-			"validator=%d, completed proposal for block %d/%d with %d transactions\n",
-			em.config.Validator.ID, nextBlock, attempt, len(proposal.Transactions),
+			"validator=%d, completed proposal for turn %d, block %d with %d transactions\n",
+			em.config.Validator.ID, nextTurn, nextBlock, len(proposal.Transactions),
 		)
 		for _, tx := range proposal.Transactions {
 			sender, _ := types.Sender(em.world.TxSigner, tx)
@@ -148,10 +146,10 @@ func (em *Emitter) addProposal(
 
 	// Envelop and append the new proposal to the event.
 	event.SetProposalEnvelope(&inter.ProposalEnvelope{
-		LastSeenProposalNumber:  proposal.Number,
-		LastSeenProposalAttempt: proposal.Attempt,
-		LastSeenProposalFrame:   event.Frame(),
-		Proposal:                proposal,
+		LastSeenProposalTurn:  nextTurn,
+		LastSeenProposedBlock: nextBlock,
+		LastSeenProposalFrame: event.Frame(),
+		Proposal:              proposal,
 	})
 
 	return nil
