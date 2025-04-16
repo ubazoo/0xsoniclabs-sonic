@@ -21,7 +21,6 @@ import (
 // validators for validation and inclusion in the blockchain.
 type Proposal struct {
 	Number       idx.Block
-	Attempt      uint32
 	ParentHash   common.Hash
 	Time         Timestamp
 	Randao       common.Hash
@@ -33,7 +32,6 @@ type Proposal struct {
 func (p *Proposal) Hash() hash.Hash {
 	data := []byte{}
 	data = binary.BigEndian.AppendUint64(data, uint64(p.Number))
-	data = binary.BigEndian.AppendUint32(data, uint32(p.Attempt))
 	data = append(data, p.ParentHash[:]...)
 	data = binary.BigEndian.AppendUint64(data, uint64(p.Time))
 	data = append(data, p.Randao[:]...)
@@ -74,7 +72,6 @@ func (p *Proposal) toProto() (*pb.Proposal, error) {
 
 	return &pb.Proposal{
 		Number:       uint64(p.Number),
-		Attempt:      p.Attempt,
 		ParentHash:   p.ParentHash[:],
 		Timestamp:    uint64(p.Time),
 		Randao:       p.Randao[:],
@@ -85,7 +82,6 @@ func (p *Proposal) toProto() (*pb.Proposal, error) {
 func (p *Proposal) fromProto(pb *pb.Proposal) error {
 	// Restore individual fields.
 	p.Number = idx.Block(pb.Number)
-	p.Attempt = pb.Attempt
 	copy(p.ParentHash[:], pb.ParentHash)
 	p.Time = Timestamp(pb.Timestamp)
 	copy(p.Randao[:], pb.Randao)

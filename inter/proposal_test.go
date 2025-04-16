@@ -25,7 +25,6 @@ func TestProposal_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 
 		proposal := &Proposal{
 			Number:     idx.Block(1 + i),
-			Attempt:    uint32(2 + i),
 			ParentHash: [32]byte{0: 1, 1: byte(i), 31: 2},
 			Time:       Timestamp(3 + i),
 			Randao:     [32]byte{0: 3, 1: byte(i), 21: 4},
@@ -39,7 +38,6 @@ func TestProposal_Hash_IsShaOfFieldConcatenation(t *testing.T) {
 		hash := func(proposal *Proposal) hash.Hash {
 			data := []byte{}
 			data = binary.BigEndian.AppendUint64(data, uint64(proposal.Number))
-			data = binary.BigEndian.AppendUint32(data, proposal.Attempt)
 			data = append(data, proposal.ParentHash[:]...)
 			data = binary.BigEndian.AppendUint64(data, uint64(proposal.Time))
 			data = append(data, proposal.Randao[:]...)
@@ -58,9 +56,6 @@ func TestProposal_Hash_ModifyingContent_ChangesHash(t *testing.T) {
 	tests := map[string]func(*Proposal){
 		"change number": func(p *Proposal) {
 			p.Number = p.Number + 1
-		},
-		"change attempt": func(p *Proposal) {
-			p.Attempt = p.Attempt + 1
 		},
 		"change parent hash": func(p *Proposal) {
 			p.ParentHash[0] = p.ParentHash[0] + 1
@@ -111,10 +106,9 @@ func TestProposal_CanBeSerializedAndRestored(t *testing.T) {
 	require := require.New(t)
 	original := &Proposal{
 		Number:     1,
-		Attempt:    2,
 		ParentHash: [32]byte{2},
-		Time:       4,
-		Randao:     [32]byte{5},
+		Time:       3,
+		Randao:     [32]byte{4},
 		Transactions: []*types.Transaction{
 			types.NewTx(&types.LegacyTx{Nonce: 1}),
 			types.NewTx(&types.LegacyTx{Nonce: 2}),
@@ -132,7 +126,6 @@ func TestProposal_CanBeSerializedAndRestored(t *testing.T) {
 	// possible because transactions have insignificant meta-information that
 	// is not serialized and restored.
 	require.Equal(original.Number, restored.Number)
-	require.Equal(original.Attempt, restored.Attempt)
 	require.Equal(original.ParentHash, restored.ParentHash)
 	require.Equal(original.Time, restored.Time)
 	require.Equal(original.Randao, restored.Randao)
