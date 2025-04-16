@@ -634,8 +634,9 @@ type contractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (com
 // Its purpose is to isolate transaction issuing accounts, so that multiple test
 // sessions can be run in parallel on the same network without conflicting nonce issues.
 type Session struct {
-	net     *IntegrationTestNet
-	account Account
+	net          *IntegrationTestNet
+	account      Account
+	accountNonce uint64
 }
 
 func (s *Session) GetFeatureSet() opera.FeatureSet {
@@ -659,28 +660,24 @@ func (s *Session) EndowAccount(
 		return nil, fmt.Errorf("failed to get chain ID: %w", err)
 	}
 
-	// The requested funds are moved from the validator account to the target account.
-	nonce, err := client.NonceAt(context.Background(), s.account.Address(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get nonce: %w", err)
-	}
-
 	price, err := client.SuggestGasPrice(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("failed to get gas price: %w", err)
 	}
 
+	// The requested funds are moved from the validator account to the target account.
 	transaction, err := types.SignTx(types.NewTx(&types.AccessListTx{
 		ChainID:  chainId,
 		Gas:      21000,
 		GasPrice: price,
 		To:       &address,
 		Value:    value,
-		Nonce:    nonce,
+		Nonce:    s.accountNonce,
 	}), types.NewLondonSigner(chainId), s.account.PrivateKey)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign transaction: %w", err)
 	}
+	s.accountNonce++
 	return s.Run(transaction)
 }
 
@@ -739,10 +736,12 @@ func (s *Session) Apply(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get transaction options: %w", err)
 	}
+	txOpts.Nonce = big.NewInt(int64(s.accountNonce))
 	transaction, err := issue(txOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create transaction: %w", err)
 	}
+	s.accountNonce++
 	return s.GetReceipt(transaction.Hash())
 }
 

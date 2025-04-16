@@ -2,7 +2,6 @@ package app_test
 
 import (
 	"crypto/ecdsa"
-	"crypto/rand"
 	"fmt"
 	"io"
 	"math/big"
@@ -353,10 +352,6 @@ func generateNBlocks(t *testing.T, net *tests.IntegrationTestNet, n int) {
 
 func createAccount(t *testing.T, net *tests.IntegrationTestNet) {
 	t.Helper()
-
-	var addr common.Address
-	_, err := rand.Read(addr[:])
-	require.NoError(t, err)
 
 	receipt, err := net.EndowAccount(common.Address{42}, big.NewInt(100))
 	require.NoError(t, err)
