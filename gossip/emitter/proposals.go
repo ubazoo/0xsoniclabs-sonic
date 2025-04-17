@@ -73,16 +73,14 @@ func (em *Emitter) addProposal(
 	valid := inter.IsValidTurnProgression(
 		inter.ProposalSummary{
 			Turn:  lastSeenProposalTurn,
-			Block: lastSeenProposedBlock,
 			Frame: lastSeenProposalFrame,
 		},
 		inter.ProposalSummary{
 			Turn:  nextTurn,
-			Block: nextBlock,
 			Frame: event.Frame(),
 		},
 	)
-	if !valid {
+	if !valid || lastSeenProposedBlock >= nextBlock {
 		return nil
 	}
 

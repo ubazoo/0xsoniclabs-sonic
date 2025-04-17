@@ -126,12 +126,10 @@ func (v *Checker) Validate(e inter.EventPayloadI) error {
 		if !inter.IsValidTurnProgression(
 			inter.ProposalSummary{
 				Turn:  wantLastSeenProposalTurn,
-				Block: wantLastSeenProposedBlock,
 				Frame: wantLastSeenProposalFrame,
 			},
 			inter.ProposalSummary{
 				Turn:  newTurn,
-				Block: proposal.Number,
 				Frame: e.Frame(),
 			},
 		) {
