@@ -110,6 +110,51 @@ func TestEventPayloadSerialization(t *testing.T) {
 	})
 }
 
+func TestEventUnmarshalCSER_Version2FailsIfHashOfEmptyPayloadIsIncluded(t *testing.T) {
+	require := require.New(t)
+
+	builder := MutableEventPayload{}
+	builder.SetVersion(2)
+	builder.SetTxs([]*types.Transaction{
+		types.NewTx(&types.LegacyTx{Nonce: 12}),
+	})
+	event := builder.Build()
+
+	// Deliberately set the hash to the value it should have if the payload was
+	// empty. This should be detected by the decoder and identified as an error.
+	event.payloadHash = EmptyPayloadHash(2)
+
+	data, err := rlp.EncodeToBytes(&event)
+	require.NoError(err)
+	require.True(bytes.Contains(data, event.payloadHash[:]))
+
+	var recovered EventPayload
+	err = rlp.DecodeBytes(data, &recovered)
+	require.Error(err, ErrSerMalformedEvent)
+}
+
+func TestEventUnmarshalCSER_Version3AcceptsIfHashOfAnEmptyPayloadIsIncluded(t *testing.T) {
+	require := require.New(t)
+
+	builder := MutableEventPayload{}
+	builder.SetVersion(3)
+	builder.SetPayload(Payload{})
+	event := builder.Build()
+
+	require.Equal(event.payloadHash, EmptyPayloadHash(3))
+
+	data, err := rlp.EncodeToBytes(&event)
+	require.NoError(err)
+
+	// The payload hash is always included in version3 events.
+	require.True(bytes.Contains(data, event.payloadHash[:]))
+
+	// During decoding, its presence is not considered an error.
+	var recovered EventPayload
+	err = rlp.DecodeBytes(data, &recovered)
+	require.NoError(err)
+}
+
 func makeAllTransactionTypes() []*types.Transaction {
 	chainId := big.NewInt(1)
 

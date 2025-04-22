@@ -267,6 +267,7 @@ func (e *MutableEventPayload) SetEpochVote(v LlrEpochVote) {
 
 func (e *MutableEventPayload) SetPayload(payload Payload) {
 	e.payload = payload
+	e.payloadHash = payload.Hash()
 }
 
 func calcEventID(h hash.Hash) (id [24]byte) {
