@@ -49,11 +49,11 @@ func testBlobTx_WithBlobsIsRejected(t *testing.T, ctxt *testContext) {
 
 	// attempt to run tx
 	_, err = ctxt.net.Run(tx)
-	require.ErrorContains(err, "transaction type not supported")
+	require.ErrorContains(err, "oversized data")
 
 	// repeat same tx (regression against reported repeated tx issue)
 	_, err = ctxt.net.Run(tx)
-	require.ErrorContains(err, "transaction type not supported")
+	require.ErrorContains(err, "oversized data")
 }
 
 func testBlobTx_WithEmptyBlobsIsExecuted(t *testing.T, ctxt *testContext) {
