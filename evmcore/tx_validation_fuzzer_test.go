@@ -18,7 +18,6 @@ import (
 )
 
 const (
-	testIstanbul = 0x00
 	testBerlin   = 0x01
 	testLondon   = 0x02
 	testShanghai = 0x03
@@ -30,9 +29,25 @@ const (
 func FuzzValidateTransaction(f *testing.F) {
 
 	// Seed corpus with a few valid-looking values
-	f.Add(uint8(2), uint64(1), uint64(42_000), int64(1_000), int64(500), int64(0),
+	f.Add(uint8(0), uint64(1), uint64(42_000), int64(1_000), int64(500), int64(0),
 		[]byte("hi"), false,
-		int64(1_000_000_000), int64(10), uint64(50_000), int8(3),
+		int64(1_000_000_000), int8(1), uint(0), uint(0),
+	)
+	f.Add(uint8(1), uint64(1), uint64(42_000), int64(1_000), int64(500), int64(0),
+		[]byte("123456789123456789123456789123456789123456789123456789"), false,
+		int64(123_456_789), int8(2), uint(1), uint(0),
+	)
+	f.Add(uint8(2), uint64(1), uint64(42_000), int64(1_000), int64(500), int64(0),
+		[]byte(""), false,
+		int64(1_000_000_000), int8(3), uint(2), uint(0),
+	)
+	f.Add(uint8(3), uint64(1), uint64(42_000), int64(1_000), int64(500), int64(0),
+		[]byte("some"), false,
+		int64(1_000_000_000), int8(4), uint(3), uint(0),
+	)
+	f.Add(uint8(4), uint64(1), uint64(42_000), int64(1_000), int64(500), int64(0),
+		[]byte("code"), false,
+		int64(1_000_000_000), int8(5), uint(3), uint(1),
 	)
 
 	f.Fuzz(func(t *testing.T,
@@ -40,7 +55,11 @@ func FuzzValidateTransaction(f *testing.F) {
 		txType uint8, nonce, gas uint64, feeCap, tip, value int64,
 		data []byte, isCreate bool,
 		// block context
-		blockNum, baseFee int64, evmGasPool uint64, revision int8,
+		blockNum int64, revision int8,
+		// because the number of elements in access list and authorization list
+		// affects intrinsic gas cost, these values are fuzzed,
+		// but the actual values are not relevant for this test.
+		accessListSize, authListSize uint,
 	) {
 
 		if txType > types.SetCodeTxType {
@@ -61,48 +80,60 @@ func FuzzValidateTransaction(f *testing.F) {
 
 		chainId := big.NewInt(84)
 
-		tx := makeTxOfType(txType, nonce, gas, feeCap, tip, data, value, isCreate, chainId)
+		tx := makeTxOfType(txType, nonce, gas, feeCap, tip, data, value,
+			isCreate, chainId, accessListSize, authListSize)
 		from, signedTx := signTxForTestWithChainId(t, tx, chainId)
 
 		cost := signedTx.Cost()
 		underCost := new(big.Int).Sub(cost, big.NewInt(1))
 		overCost := new(big.Int).Add(cost, big.NewInt(1))
 
+		// We intentionally avoid fuzzing these specific values to explicitly
+		// test the key edge cases: under, exact, and over.
+		// The magnitude of the difference doesn't matter;
+		// what's important is whether the value is below, equal to, or above
+		// the expected threshold.
 		for _, stateBalance := range []*big.Int{underCost, cost, overCost} {
 			for _, stateNonce := range []uint64{nonce - 1, nonce, nonce + 1} {
+				for _, validateGas := range []uint64{gas - 1, gas, gas + 1} {
+					for _, validateBaseFee := range []int64{feeCap - 1, feeCap, feeCap + 1} {
+						for _, validateMinTip := range []int64{tip - 1, tip, tip + 1} {
 
-				state := state.NewMockStateDB(ctxt)
-				state.EXPECT().GetBalance(from).Return(uint256.MustFromBig(stateBalance)).AnyTimes()
-				state.EXPECT().GetNonce(from).Return(stateNonce).AnyTimes()
-				stateExpectCalls(state)
+							state := state.NewMockStateDB(ctxt)
+							state.EXPECT().GetBalance(from).Return(uint256.MustFromBig(stateBalance)).AnyTimes()
+							state.EXPECT().GetNonce(from).Return(stateNonce).AnyTimes()
+							stateExpectCalls(state)
 
-				// TODO: fuzz on validation options as well.
-				opt := getTestTransactionsOptionFromRevision(revision, chainId)
-				opt.currentState = state
-				opt.currentMaxGas = uint64(evmGasPool)
+							opt := getTestTransactionsOptionFromRevision(revision, chainId,
+								validateGas, validateBaseFee, validateMinTip)
+							opt.currentState = state
+							opt.currentMaxGas = uint64(validateBaseFee)
 
-				// Validate the transaction
-				validateErr := validateTx(signedTx, opt)
+							// Validate the transaction
+							validateErr := validateTx(signedTx, opt)
 
-				// create evm to check validateTx is consistent with processor.
-				evm := makeTestEvm(blockNum, baseFee, evmGasPool, state, revision, chainId)
+							// create evm to check validateTx is consistent with processor.
+							evm := makeTestEvm(blockNum, validateBaseFee, validateGas, state, revision, chainId)
 
-				msg, err := TxAsMessage(
-					signedTx,
-					types.NewPragueSigner(chainId), // use same sender as signTxForTest
-					evm.Context.BaseFee)
-				require.NoError(t, err)
+							msg, err := TxAsMessage(
+								signedTx,
+								types.NewPragueSigner(chainId), // use same sender as signTxForTest
+								evm.Context.BaseFee)
+							require.NoError(t, err)
 
-				gp := new(core.GasPool).AddGas(uint64(evmGasPool))
-				var usedGas uint64
-				_, _, _, processorError := applyTransaction(msg, gp, state, big.NewInt(blockNum),
-					signedTx, &usedGas, evm, nil)
+							gp := new(core.GasPool).AddGas(uint64(validateBaseFee))
+							var usedGas uint64
+							_, _, _, processorError := applyTransaction(msg, gp, state, big.NewInt(blockNum),
+								signedTx, &usedGas, evm, nil)
 
-				if validateErr == nil {
-					if processorError != validateErr &&
-						// if the nonce is too high this is also acceptable for the validateTx
-						!strings.Contains(processorError.Error(), "nonce too high") {
-						t.Fatalf("\nvalidateTx: %v - applyTx: %v\n", validateErr, processorError)
+							if validateErr == nil {
+								if processorError != validateErr &&
+									// if the nonce is too high this is also acceptable for the validateTx
+									!strings.Contains(processorError.Error(), "nonce too high") {
+									t.Fatalf("\nvalidateTx: %v - applyTx: %v\n", validateErr, processorError)
+								}
+							}
+						}
 					}
 				}
 			}
@@ -111,7 +142,8 @@ func FuzzValidateTransaction(f *testing.F) {
 }
 
 func makeTxOfType(txType uint8, nonce, gas uint64, feeCap, tip int64,
-	data []byte, value int64, isCreate bool, chainId *big.Int) types.TxData {
+	data []byte, value int64, isCreate bool, chainId *big.Int,
+	accessListSize, authListSize uint) types.TxData {
 
 	feeCapBig := big.NewInt(feeCap)
 	tipBig := big.NewInt(tip)
@@ -121,6 +153,15 @@ func makeTxOfType(txType uint8, nonce, gas uint64, feeCap, tip int64,
 	if isCreate {
 		// Set to nil
 		toPtr = nil
+	}
+
+	accessList := make([]types.AccessTuple, accessListSize)
+	for i := range accessListSize {
+		accessList[i] = types.AccessTuple{}
+	}
+	authList := make([]types.SetCodeAuthorization, authListSize)
+	for j := range authListSize {
+		authList[j] = types.SetCodeAuthorization{}
 	}
 
 	var tx types.TxData
@@ -143,7 +184,7 @@ func makeTxOfType(txType uint8, nonce, gas uint64, feeCap, tip int64,
 			To:         toPtr,
 			Value:      big.NewInt(value),
 			Data:       data,
-			AccessList: types.AccessList{},
+			AccessList: accessList,
 		}
 	case types.DynamicFeeTxType:
 		tx = &types.DynamicFeeTx{
@@ -155,7 +196,7 @@ func makeTxOfType(txType uint8, nonce, gas uint64, feeCap, tip int64,
 			To:         toPtr,
 			Value:      big.NewInt(value),
 			Data:       data,
-			AccessList: types.AccessList{},
+			AccessList: accessList,
 		}
 	case types.BlobTxType:
 		tx = &types.BlobTx{
@@ -167,7 +208,7 @@ func makeTxOfType(txType uint8, nonce, gas uint64, feeCap, tip int64,
 			To:         to, // cannot be create
 			Value:      uint256.NewInt(uint64(value)),
 			Data:       data,
-			AccessList: types.AccessList{},
+			AccessList: accessList,
 		}
 	case types.SetCodeTxType:
 		tx = &types.SetCodeTx{
@@ -178,8 +219,8 @@ func makeTxOfType(txType uint8, nonce, gas uint64, feeCap, tip int64,
 			To:         to, // cannot be create
 			Value:      uint256.NewInt(uint64(value)),
 			Data:       data,
-			AccessList: types.AccessList{},
-			AuthList:   []types.SetCodeAuthorization{{}},
+			AccessList: accessList,
+			AuthList:   authList,
 		}
 	}
 	return tx
@@ -191,21 +232,26 @@ func stateExpectCalls(state *state.MockStateDB) {
 	state.EXPECT().Snapshot().AnyTimes()
 	state.EXPECT().RevertToSnapshot(any).AnyTimes()
 
-	// all accounts are unknown to a new state
-	state.EXPECT().Exist(any).Return(false).AnyTimes()
+	// All accounts are preloaded in the state to avoid unintended early
+	// exits or implicit account creation.
+	state.EXPECT().Exist(any).Return(true).AnyTimes()
+
 	state.EXPECT().CreateAccount(any).AnyTimes()
 	state.EXPECT().CreateContract(any).AnyTimes()
 	state.EXPECT().EndTransaction().AnyTimes()
 	state.EXPECT().TxIndex().Return(4).AnyTimes()
 
+	// This must return empty because externally owned accounts cannot have
+	// code prior to the Prague revision.
 	state.EXPECT().GetCode(any).Return([]byte{}).AnyTimes()
-	state.EXPECT().GetCodeHash(any).Return(common.Hash{}).AnyTimes()
+
+	state.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
 	state.EXPECT().GetCodeSize(any).Return(0).AnyTimes()
 	state.EXPECT().GetLogs(any, any).Return([]*types.Log{}).AnyTimes()
 	state.EXPECT().GetNonce(any).Return(uint64(1)).AnyTimes()
 	state.EXPECT().GetRefund().Return(uint64(0)).AnyTimes()
 	state.EXPECT().GetState(any, any).Return(common.Hash{}).AnyTimes()
-	state.EXPECT().GetStorageRoot(any).Return(common.Hash{}).AnyTimes()
+	state.EXPECT().GetStorageRoot(any).Return(types.EmptyRootHash).AnyTimes()
 
 	state.EXPECT().HasSelfDestructed(any).Return(false).AnyTimes()
 	state.EXPECT().SelfDestruct(any).AnyTimes()
@@ -227,7 +273,15 @@ func stateExpectCalls(state *state.MockStateDB) {
 func makeTestEvm(blockNum, basefee int64, evmGasPrice uint64, state vm.StateDB, revision int8, chainId *big.Int) *vm.EVM {
 
 	chainConfig := &params.ChainConfig{
-		ChainID: chainId,
+		ChainID:             chainId,
+		EIP150Block:         new(big.Int),
+		EIP155Block:         new(big.Int),
+		EIP158Block:         new(big.Int),
+		ByzantiumBlock:      new(big.Int),
+		ConstantinopleBlock: new(big.Int),
+		PetersburgBlock:     new(big.Int),
+		IstanbulBlock:       new(big.Int),
+		MuirGlacierBlock:    new(big.Int),
 	}
 
 	u64One := uint64(1)
@@ -287,11 +341,12 @@ func signTxForTestWithChainId(t *testing.T, tx types.TxData, chainId *big.Int) (
 	return address, signedTx
 }
 
-func getTestTransactionsOptionFromRevision(revision int8, chainId *big.Int) validationOptions {
+func getTestTransactionsOptionFromRevision(revision int8, chainId *big.Int,
+	maxGas uint64, BaseFee, MinTip int64) validationOptions {
 	opt := validationOptions{
-		currentMaxGas:  100_000,
-		currentBaseFee: big.NewInt(1),
-		minTip:         big.NewInt(1),
+		currentMaxGas:  maxGas,
+		currentBaseFee: big.NewInt(BaseFee),
+		minTip:         big.NewInt(MinTip),
 		isLocal:        true,
 		signer:         types.NewPragueSigner(chainId),
 	}
