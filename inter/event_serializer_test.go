@@ -8,6 +8,7 @@ import (
 	"math/rand/v2"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/utils/cser"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -130,7 +131,7 @@ func TestEventUnmarshalCSER_Version2FailsIfHashOfEmptyPayloadIsIncluded(t *testi
 
 	var recovered EventPayload
 	err = rlp.DecodeBytes(data, &recovered)
-	require.Error(err, ErrSerMalformedEvent)
+	require.ErrorIs(err, cser.ErrNonCanonicalEncoding)
 }
 
 func TestEventUnmarshalCSER_Version3AcceptsIfHashOfAnEmptyPayloadIsIncluded(t *testing.T) {
@@ -141,6 +142,7 @@ func TestEventUnmarshalCSER_Version3AcceptsIfHashOfAnEmptyPayloadIsIncluded(t *t
 	builder.SetPayload(Payload{})
 	event := builder.Build()
 
+	require.Equal(event.payloadHash, (&Payload{}).Hash())
 	require.Equal(event.payloadHash, EmptyPayloadHash(3))
 
 	data, err := rlp.EncodeToBytes(&event)
@@ -153,6 +155,56 @@ func TestEventUnmarshalCSER_Version3AcceptsIfHashOfAnEmptyPayloadIsIncluded(t *t
 	var recovered EventPayload
 	err = rlp.DecodeBytes(data, &recovered)
 	require.NoError(err)
+}
+
+func TestEventPayloadMarshalCSER_DetectsInvalidTransactionEncoding(t *testing.T) {
+	require := require.New(t)
+
+	invalidTx := types.NewTx(&types.AccessListTx{
+		ChainID: big.NewInt(-1),
+	})
+	_, want := invalidTx.MarshalBinary()
+	require.Error(want)
+
+	builder := MutableEventPayload{}
+	builder.SetVersion(3)
+	builder.SetPayload(Payload{
+		Proposal: &Proposal{
+			Transactions: []*types.Transaction{invalidTx},
+		},
+	})
+	event := builder.Build()
+
+	_, err := rlp.EncodeToBytes(&event)
+	require.ErrorIs(err, want)
+}
+
+func TestEventPayloadUnmarshalCSER_DetectsInvalidPayloadEncoding(t *testing.T) {
+	require := require.New(t)
+
+	payload := Payload{
+		LastSeenProposalTurn:  123,
+		LastSeenProposedBlock: 456,
+	}
+	payloadData, err := payload.Serialize()
+	require.NoError(err)
+
+	builder := MutableEventPayload{}
+	builder.SetVersion(3)
+	builder.SetPayload(payload)
+	event := builder.Build()
+
+	data, err := rlp.EncodeToBytes(&event)
+	require.NoError(err)
+
+	var restored EventPayload
+	err = rlp.DecodeBytes(data, &restored)
+	require.NoError(err)
+
+	// Corrupt the payload data in the serialized event.
+	data = bytes.Replace(data, payloadData, make([]byte, len(payloadData)), 1)
+	err = rlp.DecodeBytes(data, &restored)
+	require.ErrorContains(err, "invalid wire-format")
 }
 
 func makeAllTransactionTypes() []*types.Transaction {
