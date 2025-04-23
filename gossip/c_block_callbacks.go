@@ -29,6 +29,7 @@ import (
 	"github.com/0xsoniclabs/sonic/gossip/scrambler"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
+	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils"
 )
@@ -174,276 +175,336 @@ func consensusCallbackBeginBlockFn(
 					return nil
 				}
 
-				sealer := blockProc.SealerModule.Start(blockCtx, bs, es)
-				sealing := sealer.EpochSealing()
-				txListener := blockProc.TxListenerModule.Start(blockCtx, bs, es, statedb)
-				onNewLogAll := func(l *types.Log) {
-					txListener.OnNewLog(l)
-					// Note: it's possible for logs to get indexed twice by BR and block processing
-					if verWatcher != nil {
-						verWatcher.OnNewLog(l)
-					}
+				processor := blockProcessor{
+					blockBusyFlag:            blockBusyFlag,
+					blockContext:             blockCtx,
+					blockProcessingStartTime: start,
+					blockProcessor:           &blockProc,
+					blockState:               &bs,
+					confirmedEvents:          confirmedEvents,
+					epochState:               &es,
+					evmStateReader:           evmStateReader,
+					feed:                     feed,
+					indexTransactions:        txIndex,
+					parallelTasks:            parallelTasks,
+					prevRandao:               computePrevRandao(confirmedEvents),
+					sccNode:                  sccNode,
+					stateDb:                  statedb,
+					store:                    store,
+					versionWatcher:           verWatcher,
+					wg:                       wg,
 				}
-
-				prevRandao := computePrevRandao(confirmedEvents)
-				chainCfg := es.Rules.EvmChainConfig(store.GetUpgradeHeights())
-				evmProcessor := blockProc.EVMModule.Start(
-					blockCtx,
-					statedb,
-					evmStateReader,
-					onNewLogAll,
-					es.Rules,
-					chainCfg,
-					prevRandao,
-				)
-				executionStart := time.Now()
-
-				// Execute pre-internal transactions
-				preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-				preInternalReceipts := evmProcessor.Execute(preInternalTxs)
-				bs = txListener.Finalize()
-				for _, r := range preInternalReceipts {
-					if r.Status == 0 {
-						log.Warn("Pre-internal transaction reverted", "txid", r.TxHash.String())
-					}
-				}
-
-				// Seal epoch if requested
-				if sealing {
-					sealer.Update(bs, es)
-					prevUpg := es.Rules.Upgrades
-					bs, es = sealer.SealEpoch() // TODO: refactor to not mutate the bs, it is unclear
-					if es.Rules.Upgrades != prevUpg {
-						store.AddUpgradeHeight(opera.UpgradeHeight{
-							Upgrades: es.Rules.Upgrades,
-							Height:   blockCtx.Idx + 1,
-							Time:     blockCtx.Time + 1,
-						})
-					}
-					store.SetBlockEpochState(bs, es)
-					newValidators = es.Validators
-					txListener.Update(bs, es)
-				}
-
-				// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
-				blockFn := func() {
-
-					// Start assembling the resulting block.
-					number := uint64(blockCtx.Idx)
-					lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
-					maxBlockGas := es.Rules.Blocks.MaxBlockGas
-					blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
-					blockBuilder := inter.NewBlockBuilder().
-						WithEpoch(blockCtx.Atropos.Epoch()).
-						WithNumber(number).
-						WithParentHash(lastBlockHeader.Hash).
-						WithTime(blockCtx.Time).
-						WithPrevRandao(prevRandao).
-						WithGasLimit(maxBlockGas).
-						WithDuration(blockDuration)
-
-					for i := range preInternalTxs {
-						blockBuilder.AddTransaction(
-							preInternalTxs[i],
-							preInternalReceipts[i],
-						)
-					}
-
-					// Execute post-internal transactions
-					internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, bs, es, sealing, statedb)
-					internalReceipts := evmProcessor.Execute(internalTxs)
-					for _, r := range internalReceipts {
-						if r.Status == 0 {
-							log.Warn("Internal transaction reverted", "txid", r.TxHash.String())
-						}
-					}
-
-					for i := range internalTxs {
-						blockBuilder.AddTransaction(
-							internalTxs[i],
-							internalReceipts[i],
-						)
-					}
-
-					// sort events by Lamport time
-					sort.Sort(confirmedEvents)
-
-					blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
-					unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
-					for _, e := range blockEvents {
-						unorderedTxs = append(unorderedTxs, e.Txs()...)
-					}
-
-					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
-					orderedTxs := scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
-
-					for i, receipt := range evmProcessor.Execute(orderedTxs) {
-						if receipt != nil { // < nil if skipped
-							blockBuilder.AddTransaction(orderedTxs[i], receipt)
-						}
-					}
-
-					evmBlock, skippedTxs, allReceipts := evmProcessor.Finalize()
-
-					// Add results of the transaction processing to the block.
-					blockBuilder.
-						WithStateRoot(common.Hash(evmBlock.Root)).
-						WithGasUsed(evmBlock.GasUsed).
-						WithBaseFee(evmBlock.BaseFee)
-
-					// Complete the block.
-					block := blockBuilder.Build()
-					evmBlock.Hash = block.Hash()
-					evmBlock.Duration = blockDuration
-
-					// Update block-hash references in receipts and logs.
-					for i := range allReceipts {
-						allReceipts[i].BlockHash = block.Hash()
-						for j := range allReceipts[i].Logs {
-							allReceipts[i].Logs[j].BlockHash = block.Hash()
-						}
-					}
-
-					// memorize event position of each tx
-					txPositions := make(map[common.Hash]ExtendedTxPosition)
-					for _, e := range blockEvents {
-						for i, tx := range e.Txs() {
-							// If tx was met in multiple events, then assign to first ordered event
-							if _, ok := txPositions[tx.Hash()]; ok {
-								continue
-							}
-							txPositions[tx.Hash()] = ExtendedTxPosition{
-								TxPosition: evmstore.TxPosition{
-									Event:       e.ID(),
-									EventOffset: uint32(i),
-								},
-								EventCreator: e.Creator(),
-							}
-						}
-					}
-					// memorize block position of each tx
-					for i, tx := range evmBlock.Transactions {
-						// not skipped txs only
-						position := txPositions[tx.Hash()]
-						position.Block = blockCtx.Idx
-						position.BlockOffset = uint32(i)
-						txPositions[tx.Hash()] = position
-					}
-
-					// call OnNewReceipt
-					for i, r := range allReceipts {
-						creator := txPositions[r.TxHash].EventCreator
-						if creator != 0 && es.Validators.Get(creator) == 0 {
-							creator = 0
-						}
-						txListener.OnNewReceipt(evmBlock.Transactions[i], r, creator, evmBlock.BaseFee, evmBlock.BlobBaseFee)
-					}
-					bs = txListener.Finalize() // TODO: refactor to not mutate the bs
-					bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
-					// At this point, block state is finalized
-
-					// Build index for not skipped txs
-					if txIndex {
-						for _, tx := range evmBlock.Transactions {
-							// not skipped txs only
-							store.evm.SetTxPosition(tx.Hash(), txPositions[tx.Hash()].TxPosition)
-						}
-
-						// Index receipts
-						// Note: it's possible for receipts to get indexed twice by BR and block processing
-						if allReceipts.Len() != 0 {
-							store.evm.SetReceipts(blockCtx.Idx, allReceipts)
-							for _, r := range allReceipts {
-								store.evm.IndexLogs(r.Logs...)
-							}
-						}
-					}
-
-					bs.LastBlock = blockCtx
-					bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
-					if sealing {
-						store.SetHistoryBlockEpochState(es.Epoch, bs, es)
-						store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
-					}
-
-					for _, tx := range blockBuilder.GetTransactions() {
-						store.evm.SetTx(tx.Hash(), tx)
-					}
-
-					store.SetBlock(blockCtx.Idx, block)
-					store.SetBlockIndex(block.Hash(), blockCtx.Idx)
-					store.SetBlockEpochState(bs, es)
-					store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
-
-					// Inform the SCC about the new block
-					if sccNode != nil {
-						err := sccNode.NewBlock(cert.NewBlockStatement(
-							chainCfg.ChainID.Uint64(),
-							blockCtx.Idx,
-							block.Hash(),
-							block.StateRoot,
-						))
-						if err != nil {
-							log.Warn("Failed to inform SCC about new block", "err", err)
-						}
-					}
-
-					// Update the metrics touched during block processing
-					executionTime := time.Since(executionStart)
-					blockExecutionTimer.Update(executionTime)
-					blockExecutionNonResettingTimer.Update(executionTime)
-
-					// Update the metrics touched by new block
-					headBlockGauge.Update(int64(blockCtx.Idx))
-					headHeaderGauge.Update(int64(blockCtx.Idx))
-					headFastBlockGauge.Update(int64(blockCtx.Idx))
-
-					// Notify about new block
-					if feed != nil {
-						var logs []*types.Log
-						for _, r := range allReceipts {
-							logs = append(logs, r.Logs...)
-						}
-						feed.notifyAboutNewBlock(evmBlock, logs)
-					}
-
-					now := time.Now()
-					blockAge := now.Sub(block.Time.Time())
-					log.Info("New block",
-						"index", blockCtx.Idx,
-						"id", block.Hash(),
-						"gas_used", evmBlock.GasUsed,
-						"gas_rate", float64(evmBlock.GasUsed)/blockDuration.Seconds(),
-						"base_fee", evmBlock.BaseFee.String(),
-						"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), len(skippedTxs)),
-						"age", utils.PrettyDuration(blockAge),
-						"t", utils.PrettyDuration(now.Sub(start)),
-						"epoch", evmBlock.Epoch,
-					)
-					blockAgeGauge.Update(int64(blockAge.Nanoseconds()))
-
-					processedTxsMeter.Mark(int64(len(evmBlock.Transactions)))
-					skippedTxsMeter.Mark(int64(len(skippedTxs)))
-				}
-				if confirmedEvents.Len() != 0 {
-					atomic.StoreUint32(blockBusyFlag, 1)
-					wg.Add(1)
-					err := parallelTasks.Enqueue(func() {
-						defer atomic.StoreUint32(blockBusyFlag, 0)
-						defer wg.Done()
-						blockFn()
-					})
-					if err != nil {
-						panic(err)
-					}
-				} else {
-					blockFn()
-				}
-
-				return newValidators
+				return processor.endBlock()
 			},
 		}
 	}
+}
+
+type blockProcessor struct {
+	blockBusyFlag            *uint32
+	blockContext             iblockproc.BlockCtx
+	blockProcessingStartTime time.Time
+	blockProcessor           *BlockProc
+	blockState               *iblockproc.BlockState
+	confirmedEvents          hash.OrderedEvents
+	epochState               *iblockproc.EpochState
+	evmStateReader           *EvmStateReader
+	feed                     *ServiceFeed
+	indexTransactions        bool
+	parallelTasks            *workers.Workers
+	prevRandao               common.Hash
+	sccNode                  *scc_node.Node
+	stateDb                  state.StateDB
+	store                    *Store
+	versionWatcher           *verwatcher.VersionWatcher
+	wg                       *sync.WaitGroup
+}
+
+func (b *blockProcessor) endBlock() (newValidators *pos.Validators) {
+	blockBusyFlag := b.blockBusyFlag
+	blockCtx := b.blockContext
+	blockProc := b.blockProcessor
+	bs := b.blockState
+	confirmedEvents := b.confirmedEvents
+	es := b.epochState
+	evmStateReader := b.evmStateReader
+	feed := b.feed
+	parallelTasks := b.parallelTasks
+	prevRandao := b.prevRandao
+	sccNode := b.sccNode
+	start := b.blockProcessingStartTime
+	statedb := b.stateDb
+	store := b.store
+	txIndex := b.indexTransactions
+	verWatcher := b.versionWatcher
+	wg := b.wg
+
+	sealer := blockProc.SealerModule.Start(blockCtx, *bs, *es)
+	sealing := sealer.EpochSealing()
+	txListener := blockProc.TxListenerModule.Start(blockCtx, *bs, *es, statedb)
+	onNewLogAll := func(l *types.Log) {
+		txListener.OnNewLog(l)
+		// Note: it's possible for logs to get indexed twice by BR and block processing
+		if verWatcher != nil {
+			verWatcher.OnNewLog(l)
+		}
+	}
+
+	chainCfg := es.Rules.EvmChainConfig(store.GetUpgradeHeights())
+	evmProcessor := blockProc.EVMModule.Start(
+		blockCtx,
+		statedb,
+		evmStateReader,
+		onNewLogAll,
+		es.Rules,
+		chainCfg,
+		prevRandao,
+	)
+	executionStart := time.Now()
+
+	// Execute pre-internal transactions
+	preInternalTxs := blockProc.PreTxTransactor.PopInternalTxs(blockCtx, *bs, *es, sealing, statedb)
+	preInternalReceipts := evmProcessor.Execute(preInternalTxs)
+	*bs = txListener.Finalize()
+	for _, r := range preInternalReceipts {
+		if r.Status == 0 {
+			log.Warn("Pre-internal transaction reverted", "txid", r.TxHash.String())
+		}
+	}
+
+	// Seal epoch if requested
+	if sealing {
+		sealer.Update(*bs, *es)
+		prevUpg := es.Rules.Upgrades
+		*bs, *es = sealer.SealEpoch() // TODO: refactor to not mutate the bs, it is unclear
+		if es.Rules.Upgrades != prevUpg {
+			store.AddUpgradeHeight(opera.UpgradeHeight{
+				Upgrades: es.Rules.Upgrades,
+				Height:   blockCtx.Idx + 1,
+				Time:     blockCtx.Time + 1,
+			})
+		}
+		store.SetBlockEpochState(*bs, *es)
+		newValidators = es.Validators
+		txListener.Update(*bs, *es)
+	}
+
+	// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
+	blockFn := func() {
+
+		// Start assembling the resulting block.
+		number := uint64(blockCtx.Idx)
+		lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
+		maxBlockGas := es.Rules.Blocks.MaxBlockGas
+		blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
+		blockBuilder := inter.NewBlockBuilder().
+			WithEpoch(blockCtx.Atropos.Epoch()).
+			WithNumber(number).
+			WithParentHash(lastBlockHeader.Hash).
+			WithTime(blockCtx.Time).
+			WithPrevRandao(prevRandao).
+			WithGasLimit(maxBlockGas).
+			WithDuration(blockDuration)
+
+		for i := range preInternalTxs {
+			blockBuilder.AddTransaction(
+				preInternalTxs[i],
+				preInternalReceipts[i],
+			)
+		}
+
+		// Execute post-internal transactions
+		internalTxs := blockProc.PostTxTransactor.PopInternalTxs(blockCtx, *bs, *es, sealing, statedb)
+		internalReceipts := evmProcessor.Execute(internalTxs)
+		for _, r := range internalReceipts {
+			if r.Status == 0 {
+				log.Warn("Internal transaction reverted", "txid", r.TxHash.String())
+			}
+		}
+
+		for i := range internalTxs {
+			blockBuilder.AddTransaction(
+				internalTxs[i],
+				internalReceipts[i],
+			)
+		}
+
+		// sort events by Lamport time
+		sort.Sort(confirmedEvents)
+
+		blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
+		unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
+		for _, e := range blockEvents {
+			unorderedTxs = append(unorderedTxs, e.Txs()...)
+		}
+
+		signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
+		orderedTxs := scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
+
+		for i, receipt := range evmProcessor.Execute(orderedTxs) {
+			if receipt != nil { // < nil if skipped
+				blockBuilder.AddTransaction(orderedTxs[i], receipt)
+			}
+		}
+
+		evmBlock, skippedTxs, allReceipts := evmProcessor.Finalize()
+
+		// Add results of the transaction processing to the block.
+		blockBuilder.
+			WithStateRoot(common.Hash(evmBlock.Root)).
+			WithGasUsed(evmBlock.GasUsed).
+			WithBaseFee(evmBlock.BaseFee)
+
+		// Complete the block.
+		block := blockBuilder.Build()
+		evmBlock.Hash = block.Hash()
+		evmBlock.Duration = blockDuration
+
+		// Update block-hash references in receipts and logs.
+		for i := range allReceipts {
+			allReceipts[i].BlockHash = block.Hash()
+			for j := range allReceipts[i].Logs {
+				allReceipts[i].Logs[j].BlockHash = block.Hash()
+			}
+		}
+
+		// memorize event position of each tx
+		txPositions := make(map[common.Hash]ExtendedTxPosition)
+		for _, e := range blockEvents {
+			for i, tx := range e.Txs() {
+				// If tx was met in multiple events, then assign to first ordered event
+				if _, ok := txPositions[tx.Hash()]; ok {
+					continue
+				}
+				txPositions[tx.Hash()] = ExtendedTxPosition{
+					TxPosition: evmstore.TxPosition{
+						Event:       e.ID(),
+						EventOffset: uint32(i),
+					},
+					EventCreator: e.Creator(),
+				}
+			}
+		}
+		// memorize block position of each tx
+		for i, tx := range evmBlock.Transactions {
+			// not skipped txs only
+			position := txPositions[tx.Hash()]
+			position.Block = blockCtx.Idx
+			position.BlockOffset = uint32(i)
+			txPositions[tx.Hash()] = position
+		}
+
+		// call OnNewReceipt
+		for i, r := range allReceipts {
+			creator := txPositions[r.TxHash].EventCreator
+			if creator != 0 && es.Validators.Get(creator) == 0 {
+				creator = 0
+			}
+			txListener.OnNewReceipt(evmBlock.Transactions[i], r, creator, evmBlock.BaseFee, evmBlock.BlobBaseFee)
+		}
+		*bs = txListener.Finalize() // TODO: refactor to not mutate the bs
+		bs.FinalizedStateRoot = hash.Hash(evmBlock.Root)
+		// At this point, block state is finalized
+
+		// Build index for not skipped txs
+		if txIndex {
+			for _, tx := range evmBlock.Transactions {
+				// not skipped txs only
+				store.evm.SetTxPosition(tx.Hash(), txPositions[tx.Hash()].TxPosition)
+			}
+
+			// Index receipts
+			// Note: it's possible for receipts to get indexed twice by BR and block processing
+			if allReceipts.Len() != 0 {
+				store.evm.SetReceipts(blockCtx.Idx, allReceipts)
+				for _, r := range allReceipts {
+					store.evm.IndexLogs(r.Logs...)
+				}
+			}
+		}
+
+		bs.LastBlock = blockCtx
+		bs.CheatersWritten = uint32(bs.EpochCheaters.Len())
+		if sealing {
+			store.SetHistoryBlockEpochState(es.Epoch, *bs, *es)
+			store.SetEpochBlock(blockCtx.Idx+1, es.Epoch)
+		}
+
+		for _, tx := range blockBuilder.GetTransactions() {
+			store.evm.SetTx(tx.Hash(), tx)
+		}
+
+		store.SetBlock(blockCtx.Idx, block)
+		store.SetBlockIndex(block.Hash(), blockCtx.Idx)
+		store.SetBlockEpochState(*bs, *es)
+		store.EvmStore().SetCachedEvmBlock(blockCtx.Idx, evmBlock)
+
+		// Inform the SCC about the new block
+		if sccNode != nil {
+			err := sccNode.NewBlock(cert.NewBlockStatement(
+				chainCfg.ChainID.Uint64(),
+				blockCtx.Idx,
+				block.Hash(),
+				block.StateRoot,
+			))
+			if err != nil {
+				log.Warn("Failed to inform SCC about new block", "err", err)
+			}
+		}
+
+		// Update the metrics touched during block processing
+		executionTime := time.Since(executionStart)
+		blockExecutionTimer.Update(executionTime)
+		blockExecutionNonResettingTimer.Update(executionTime)
+
+		// Update the metrics touched by new block
+		headBlockGauge.Update(int64(blockCtx.Idx))
+		headHeaderGauge.Update(int64(blockCtx.Idx))
+		headFastBlockGauge.Update(int64(blockCtx.Idx))
+
+		// Notify about new block
+		if feed != nil {
+			var logs []*types.Log
+			for _, r := range allReceipts {
+				logs = append(logs, r.Logs...)
+			}
+			feed.notifyAboutNewBlock(evmBlock, logs)
+		}
+
+		now := time.Now()
+		blockAge := now.Sub(block.Time.Time())
+		log.Info("New block",
+			"index", blockCtx.Idx,
+			"id", block.Hash(),
+			"gas_used", evmBlock.GasUsed,
+			"gas_rate", float64(evmBlock.GasUsed)/blockDuration.Seconds(),
+			"base_fee", evmBlock.BaseFee.String(),
+			"txs", fmt.Sprintf("%d/%d", len(evmBlock.Transactions), len(skippedTxs)),
+			"age", utils.PrettyDuration(blockAge),
+			"t", utils.PrettyDuration(now.Sub(start)),
+			"epoch", evmBlock.Epoch,
+		)
+		blockAgeGauge.Update(int64(blockAge.Nanoseconds()))
+
+		processedTxsMeter.Mark(int64(len(evmBlock.Transactions)))
+		skippedTxsMeter.Mark(int64(len(skippedTxs)))
+	}
+	if confirmedEvents.Len() != 0 {
+		atomic.StoreUint32(blockBusyFlag, 1)
+		wg.Add(1)
+		err := parallelTasks.Enqueue(func() {
+			defer atomic.StoreUint32(blockBusyFlag, 0)
+			defer wg.Done()
+			blockFn()
+		})
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		blockFn()
+	}
+
+	return newValidators
 }
 
 // spillBlockEvents excludes first events which exceed MaxBlockGas
