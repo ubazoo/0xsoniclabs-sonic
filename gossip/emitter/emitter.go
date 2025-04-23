@@ -381,7 +381,9 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	}
 
 	version := uint8(0)
-	if em.world.GetRules().Upgrades.Sonic {
+	if em.world.GetRules().Upgrades.Allegro {
+		version = 3
+	} else if em.world.GetRules().Upgrades.Sonic {
 		version = 2
 	} else if em.world.GetRules().Upgrades.Llr {
 		version = 1
@@ -417,8 +419,16 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 		return nil, nil
 	}
 
-	// Add txs
-	em.addTxs(mutEvent, sortedTxs)
+	// add payload to the event
+	if version == 3 {
+		// add a full block proposal
+		if err := em.addProposal(mutEvent, sortedTxs); err != nil {
+			return nil, err
+		}
+	} else {
+		// Add txs
+		em.addTxs(mutEvent, sortedTxs)
+	}
 
 	// calc Payload hash
 	mutEvent.SetPayloadHash(inter.CalcPayloadHash(mutEvent))
