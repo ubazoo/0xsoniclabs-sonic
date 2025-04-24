@@ -102,6 +102,13 @@ func FuzzValidateTransaction(f *testing.F) {
 							state := state.NewMockStateDB(ctxt)
 							state.EXPECT().GetBalance(from).Return(uint256.MustFromBig(stateBalance)).AnyTimes()
 							state.EXPECT().GetNonce(from).Return(stateNonce).AnyTimes()
+							if txType == types.SetCodeTxType {
+								state.EXPECT().GetCode(gomock.Any()).Return([]byte("some code")).AnyTimes()
+							} else {
+								// This must return empty because externally owned accounts cannot have
+								// code prior to the Prague revision.
+								state.EXPECT().GetCode(gomock.Any()).Return([]byte{}).AnyTimes()
+							}
 							stateExpectCalls(state)
 
 							opt := getTestTransactionsOptionFromRevision(revision, chainId,
@@ -240,10 +247,6 @@ func stateExpectCalls(state *state.MockStateDB) {
 	state.EXPECT().CreateContract(any).AnyTimes()
 	state.EXPECT().EndTransaction().AnyTimes()
 	state.EXPECT().TxIndex().Return(4).AnyTimes()
-
-	// This must return empty because externally owned accounts cannot have
-	// code prior to the Prague revision.
-	state.EXPECT().GetCode(any).Return([]byte{}).AnyTimes()
 
 	state.EXPECT().GetCodeHash(any).Return(types.EmptyCodeHash).AnyTimes()
 	state.EXPECT().GetCodeSize(any).Return(0).AnyTimes()
