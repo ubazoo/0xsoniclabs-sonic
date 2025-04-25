@@ -1,15 +1,19 @@
 package gossip
 
 import (
+	"math/big"
 	"sync/atomic"
 
 	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/emitter"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/utils/wgmutex"
 	"github.com/0xsoniclabs/sonic/valkeystore"
 	"github.com/0xsoniclabs/sonic/vecmt"
@@ -67,6 +71,22 @@ func (ew *emitterWorldProc) StateDB() state.StateDB {
 		return nil
 	}
 	return statedb
+}
+
+func (ew *emitterWorldProc) GetUpgradeHeights() []opera.UpgradeHeight {
+	return ew.s.store.GetUpgradeHeights()
+}
+
+func (ew *emitterWorldProc) GetHeader(_ common.Hash, number uint64) *evmcore.EvmHeader {
+	block := ew.s.store.GetBlock(idx.Block(number))
+	if block == nil {
+		return nil
+	}
+	return &evmcore.EvmHeader{
+		// TODO: check that these are all the required fields
+		Number:     new(big.Int).SetUint64(number),
+		ParentHash: block.ParentHash,
+	}
 }
 
 func (ew *emitterWorldProc) IsSynced() bool {

@@ -18,10 +18,13 @@ package emitter
 
 import (
 	"container/heap"
+	"iter"
 	"maps"
 	"math/big"
 	"slices"
 
+	"github.com/0xsoniclabs/sonic/eventcheck/epochcheck"
+	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -174,5 +177,34 @@ func (t *transactionsByPriceAndNonce) Copy() *transactionsByPriceAndNonce {
 		heads:   slices.Clone(t.heads),
 		signer:  t.signer,
 		baseFee: t.baseFee, // not writable, no need to copy
+	}
+}
+
+// Eligible returns an iterator over the transactions in this index, sorted by
+// price and nonce, that are eligible for inclusion in a block according to the
+// provided network rules. The iterator consumes this index, similar to how
+// a sequence of Peek(), Pop(), and Shift() calls would do.
+func (t *transactionsByPriceAndNonce) Eligible(
+	rules *opera.Rules,
+) iter.Seq[*types.Transaction] {
+	return func(yield func(*types.Transaction) bool) {
+		for {
+			tx, _ := t.Peek()
+			if tx == nil {
+				return
+			}
+			resolvedTx := tx.Resolve()
+
+			// check transaction epoch rules (tx type, gas price)
+			if epochcheck.CheckTxs(types.Transactions{resolvedTx}, *rules) != nil {
+				txsSkippedEpochRules.Inc(1)
+				t.Pop()
+				continue
+			}
+			if !yield(resolvedTx) {
+				return
+			}
+			t.Shift()
+		}
 	}
 }
