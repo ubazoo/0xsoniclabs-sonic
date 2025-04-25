@@ -1,6 +1,8 @@
 package evmcore
 
 import (
+	"fmt"
+	"iter"
 	"math/big"
 	"strings"
 	"testing"
@@ -84,68 +86,145 @@ func FuzzValidateTransaction(f *testing.F) {
 			isCreate, chainId, accessListSize, authListSize)
 		from, signedTx := signTxForTestWithChainId(t, tx, chainId)
 
-		cost := signedTx.Cost()
-		underCost := new(big.Int).Sub(cost, big.NewInt(1))
-		overCost := new(big.Int).Add(cost, big.NewInt(1))
-
 		// We intentionally avoid fuzzing these specific values to explicitly
 		// test the key edge cases: under, exact, and over.
 		// The magnitude of the difference doesn't matter;
 		// what's important is whether the value is below, equal to, or above
 		// the expected threshold.
-		for _, stateBalance := range []*big.Int{underCost, cost, overCost} {
-			for _, stateNonce := range []uint64{nonce - 1, nonce, nonce + 1} {
-				for _, validateGas := range []uint64{gas - 1, gas, gas + 1} {
-					for _, validateBaseFee := range []int64{feeCap - 1, feeCap, feeCap + 1} {
-						for _, validateMinTip := range []int64{tip - 1, tip, tip + 1} {
+		fuzzedCombo := combo{
+			cost:    signedTx.Cost(),
+			nonce:   nonce,
+			gas:     gas,
+			baseFee: feeCap,
+			tip:     tip,
+		}
+		for combo := range generateOverUnderCombinations(fuzzedCombo) {
+			testCase := fmt.Sprintf("cost: %d, nonce: %d, gas: %d, feeCap: %d, tip: %d",
+				combo.cost, combo.nonce, combo.gas, combo.baseFee, combo.tip)
+			t.Run(testCase, func(t *testing.T) {
 
-							state := state.NewMockStateDB(ctxt)
-							state.EXPECT().GetBalance(from).Return(uint256.MustFromBig(stateBalance)).AnyTimes()
-							state.EXPECT().GetNonce(from).Return(stateNonce).AnyTimes()
-							if txType == types.SetCodeTxType {
-								state.EXPECT().GetCode(gomock.Any()).Return([]byte("some code")).AnyTimes()
-							} else {
-								// This must return empty because externally owned accounts cannot have
-								// code prior to the Prague revision.
-								state.EXPECT().GetCode(gomock.Any()).Return([]byte{}).AnyTimes()
-							}
-							stateExpectCalls(state)
+				stateBalance := combo.cost
+				stateNonce := combo.nonce
+				validateGas := combo.gas
+				validateBaseFee := combo.baseFee
+				validateMinTip := combo.tip
 
-							opt := getTestTransactionsOptionFromRevision(revision, chainId,
-								validateGas, validateBaseFee, validateMinTip)
-							opt.currentState = state
-							opt.currentMaxGas = uint64(validateBaseFee)
+				// for combo := range combos {
+				state := state.NewMockStateDB(ctxt)
+				state.EXPECT().GetBalance(from).Return(uint256.MustFromBig(stateBalance)).AnyTimes()
+				state.EXPECT().GetNonce(from).Return(stateNonce).AnyTimes()
+				if txType == types.SetCodeTxType {
+					state.EXPECT().GetCode(gomock.Any()).Return([]byte("some code")).AnyTimes()
+				} else {
+					// This must return empty because externally owned accounts cannot have
+					// code prior to the Prague revision.
+					state.EXPECT().GetCode(gomock.Any()).Return([]byte{}).AnyTimes()
+				}
+				stateExpectCalls(state)
 
-							// Validate the transaction
-							validateErr := validateTx(signedTx, opt)
+				opt := getTestTransactionsOptionFromRevision(revision, chainId,
+					validateGas, validateBaseFee, validateMinTip)
+				opt.currentState = state
+				opt.currentMaxGas = uint64(validateBaseFee)
 
-							// create evm to check validateTx is consistent with processor.
-							evm := makeTestEvm(blockNum, validateBaseFee, validateGas, state, revision, chainId)
+				// Validate the transaction
+				validateErr := validateTx(signedTx, opt)
 
-							msg, err := TxAsMessage(
-								signedTx,
-								types.NewPragueSigner(chainId), // use same sender as signTxForTest
-								evm.Context.BaseFee)
-							require.NoError(t, err)
+				// create evm to check validateTx is consistent with processor.
+				evm := makeTestEvm(blockNum, validateBaseFee, validateGas, state, revision, chainId)
 
-							gp := new(core.GasPool).AddGas(uint64(validateBaseFee))
-							var usedGas uint64
-							_, _, _, processorError := applyTransaction(msg, gp, state, big.NewInt(blockNum),
-								signedTx, &usedGas, evm, nil)
+				msg, err := TxAsMessage(
+					signedTx,
+					types.NewPragueSigner(chainId), // use same sender as signTxForTest
+					evm.Context.BaseFee)
+				require.NoError(t, err)
 
-							if validateErr == nil {
-								if processorError != validateErr &&
-									// if the nonce is too high this is also acceptable for the validateTx
-									!strings.Contains(processorError.Error(), "nonce too high") {
-									t.Fatalf("\nvalidateTx: %v - applyTx: %v\n", validateErr, processorError)
-								}
+				gp := new(core.GasPool).AddGas(uint64(validateBaseFee))
+				var usedGas uint64
+				_, _, _, processorError := applyTransaction(msg, gp, state, big.NewInt(blockNum),
+					signedTx, &usedGas, evm, nil)
+
+				if validateErr == nil {
+					if processorError != validateErr &&
+						// if the nonce is too high this is also acceptable for the validateTx
+						!strings.Contains(processorError.Error(), "nonce too high") {
+						t.Fatalf("\nvalidateTx: %v - applyTx: %v\n", validateErr, processorError)
+					}
+				}
+			})
+		}
+	})
+}
+
+type combo struct {
+	cost    *big.Int
+	nonce   uint64
+	gas     uint64
+	baseFee int64
+	tip     int64
+}
+
+func generateOverUnderCombinations(c combo) iter.Seq[combo] {
+	// Generate all combinations of the given values
+	underCost := new(big.Int).Sub(c.cost, big.NewInt(1))
+	overCost := new(big.Int).Add(c.cost, big.NewInt(1))
+
+	costs := []*big.Int{underCost, c.cost, overCost}
+	nonces := []uint64{c.nonce - 1, c.nonce, c.nonce + 1}
+	gasValues := []uint64{c.gas - 1, c.gas, c.gas + 1}
+	baseFees := []int64{c.baseFee - 1, c.baseFee, c.baseFee + 1}
+	tips := []int64{c.tip - 1, c.tip, c.tip + 1}
+
+	return func(yield func(c1 combo) bool) {
+		for _, balance := range costs {
+			for _, nonce := range nonces {
+				for _, gas := range gasValues {
+					for _, baseFee := range baseFees {
+						for _, tip := range tips {
+							if !yield(combo{
+								cost:    balance,
+								nonce:   nonce,
+								gas:     gas,
+								baseFee: baseFee,
+								tip:     tip,
+							}) {
+								return
 							}
 						}
 					}
 				}
 			}
 		}
-	})
+	}
+}
+
+func TestGenerateOverUnderCombinations_GeneratesAllCombinations(t *testing.T) {
+
+	// Define the input values
+	c := combo{
+		cost:    big.NewInt(100),
+		nonce:   1,
+		gas:     200,
+		baseFee: 50,
+		tip:     10,
+	}
+
+	repeated := false
+	seen := make(map[combo]struct{})
+	comboSet := generateOverUnderCombinations(c)
+
+	for combo := range comboSet {
+		if _, exists := seen[combo]; exists {
+			repeated = true
+			break
+		} else {
+			seen[combo] = struct{}{}
+		}
+	}
+
+	require.Len(t, seen, 243)
+	require.False(t, repeated, "Duplicate combinations found")
+
 }
 
 func makeTxOfType(txType uint8, nonce, gas uint64, feeCap, tip int64,
