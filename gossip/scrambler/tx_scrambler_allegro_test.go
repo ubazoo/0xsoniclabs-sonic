@@ -62,6 +62,31 @@ func TestScrambler_EndToEnd(t *testing.T) {
 	require.Equal(t, transactions, transactions2, "scrambling should be deterministic")
 }
 
+func TestScrambler_ConvertToScramblerEntryRemovesDuplicates(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	signer := mock.NewMockTxSigner(ctrl)
+
+	tx1 := types.NewTx(&types.LegacyTx{
+		Nonce: 0,
+		Gas:   0,
+	})
+	tx2 := types.NewTx(&types.LegacyTx{
+		Nonce: 0,
+		Gas:   0,
+	})
+
+	gomock.InOrder(
+		signer.EXPECT().Sender(tx1).Return(common.Address{1}, nil),
+		signer.EXPECT().Sender(tx2).Return(common.Address{1}, nil),
+	)
+
+	input := types.Transactions{tx1, tx2}
+	output := convertToScramblerEntry(input, signer)
+	if len(output) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(output))
+	}
+}
+
 func TestScrambler_ScrambleDecodingError(t *testing.T) {
 	input := types.Transactions{
 		types.NewTx(&types.LegacyTx{
@@ -151,12 +176,10 @@ func TestScrambler_ScramblingIsDeterministic(t *testing.T) {
 		},
 	}
 
-	permutation1 := scramblePermutation(entries, 42)
-	scrambledEntries := reorderTransactions(entries, permutation1)
+	scrambledEntries := scrambleAllegro(entries, 42)
 	for range 100 {
 		shuffleEntries(entries)
-		permutation2 := scramblePermutation(entries, 42)
-		entries = reorderTransactions(entries, permutation2)
+		entries := scrambleAllegro(entries, 42)
 		require.Equal(t, scrambledEntries, entries, "scrambling should be deterministic")
 	}
 }
@@ -164,12 +187,10 @@ func TestScrambler_ScramblingIsDeterministic(t *testing.T) {
 func TestScrambler_ScramblingIsDeterministicRandomInput(t *testing.T) {
 	entries := generateScramblerInput(1000)
 
-	permutation1 := scramblePermutation(entries, 42)
-	scrambledEntries := reorderTransactions(entries, permutation1)
+	scrambledEntries := scrambleAllegro(entries, 42)
 	for range 10 {
 		shuffleEntries(entries)
-		permutation2 := scramblePermutation(entries, 42)
-		entries = reorderTransactions(entries, permutation2)
+		entries = scrambleAllegro(entries, 42)
 		require.Equal(t, scrambledEntries, entries, "scrambling should be deterministic")
 	}
 }
@@ -177,8 +198,7 @@ func TestScrambler_ScramblingIsDeterministicRandomInput(t *testing.T) {
 func TestScrambler_OrderIsBasedOnNonceGasPriceAndHash(t *testing.T) {
 	entries := generateScramblerInput(10000)
 
-	permutation1 := scramblePermutation(entries, 42)
-	scrambledEntries := reorderTransactions(entries, permutation1)
+	scrambledEntries := scrambleAllegro(entries, 42)
 
 	previous := entries[0]
 	previousSender := previous.Sender()
@@ -313,8 +333,7 @@ func TestScrambler_IsAllegroScrambledCheckInterleaved(t *testing.T) {
 		},
 	}
 
-	permutation := scramblePermutation(entries, 42)
-	entries = reorderTransactions(entries, permutation)
+	entries = scrambleAllegro(entries, 42)
 
 	if !isScrambledAllegro(entries, 42) {
 		t.Fatal("entries should be in the right scrambled order")
@@ -444,9 +463,7 @@ func TestScrambler_RoundTrip(t *testing.T) {
 		},
 	}
 
-	permutation1 := scramblePermutation(entries, 42)
-	scrambledEntries := reorderTransactions(entries, permutation1)
-
+	scrambledEntries := scrambleAllegro(entries, 42)
 	if !isScrambledAllegro(scrambledEntries, 42) {
 		t.Fatal("entries should be in the right scrambled order")
 	}
@@ -455,9 +472,7 @@ func TestScrambler_RoundTrip(t *testing.T) {
 func TestScrambler_RoundTripRandom(t *testing.T) {
 	entries := generateScramblerInput(100000)
 
-	permutation1 := scramblePermutation(entries, 42)
-	scrambledEntries := reorderTransactions(entries, permutation1)
-
+	scrambledEntries := scrambleAllegro(entries, 42)
 	if !isScrambledAllegro(scrambledEntries, 42) {
 		t.Fatal("entries should be in the right scrambled order")
 	}
@@ -485,69 +500,6 @@ func TestScrambler_ScrambleEntriesReturnsDifferentOrders(t *testing.T) {
 		scrambleEntries(scrambled, uint64(seed+1))
 
 		require.NotEqual(t, entries, scrambled, "scrambling should return different orders")
-	}
-}
-
-func TestScrambler_ReorderTransactions(t *testing.T) {
-	items := make([]int, 1000)
-	for i := range items {
-		items[i] = i
-	}
-
-	indices := rand.Perm(len(items))
-	items = reorderTransactions(items, indices)
-	require.Equal(t, indices, items, "permutation should be the same as the original items")
-}
-
-func TestRemoveInvalidTransactions(t *testing.T) {
-	tx1 := types.NewTx(&types.LegacyTx{
-		Nonce: 0,
-		Gas:   0,
-	})
-	tx2 := types.NewTx(&types.LegacyTx{
-		Nonce: 1,
-		Gas:   1,
-	})
-	tx3 := types.NewTx(&types.LegacyTx{
-		Nonce: 2,
-		Gas:   2,
-	})
-
-	entry1 := &dummyScramblerEntry{hash: tx1.Hash()}
-	entry2 := &dummyScramblerEntry{hash: tx2.Hash()}
-
-	tests := map[string]struct {
-		transactions []*types.Transaction
-		entries      []ScramblerEntry
-		expectedLen  int
-	}{
-		"All transactions valid": {
-			transactions: []*types.Transaction{tx1, tx2},
-			entries:      []ScramblerEntry{entry1, entry2},
-			expectedLen:  2,
-		},
-		"Two transaction invalid": {
-			transactions: []*types.Transaction{tx1, tx2, tx3},
-			entries:      []ScramblerEntry{entry1, entry2},
-			expectedLen:  2,
-		},
-		"No valid transactions": {
-			transactions: []*types.Transaction{tx3},
-			entries:      []ScramblerEntry{entry1, entry2},
-			expectedLen:  0,
-		},
-		"Empty transactions and entries": {
-			transactions: []*types.Transaction{},
-			entries:      []ScramblerEntry{},
-			expectedLen:  0,
-		},
-	}
-
-	for name, test := range tests {
-		t.Run(name, func(t *testing.T) {
-			result := removeInvalidTransactions(test.transactions, test.entries)
-			require.Len(t, result, test.expectedLen, "unexpected number of valid transactions")
-		})
 	}
 }
 

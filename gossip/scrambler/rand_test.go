@@ -45,8 +45,8 @@ func TestRandomGenerator_SamplesRangeUniformly(t *testing.T) {
 				}
 			}
 
-			if float64(max)/float64(min) > 1.05 {
-				t.Errorf("max/min ratio too high: %v", float64(max)/float64(min))
+			if ratio := float64(max) / float64(min); ratio > 1.05 {
+				t.Errorf("max/min ratio too high: %v", ratio)
 			}
 		})
 	}

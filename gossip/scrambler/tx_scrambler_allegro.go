@@ -18,16 +18,18 @@ import (
 // the shuffled senders.
 func Scramble(transactions []*types.Transaction, seed uint64, signer types.Signer) []*types.Transaction {
 	// Convert transactions to scrambler entries
+	// Ignoring failing transactions and duplicates (same hash)
 	entries := convertToScramblerEntry(transactions, signer)
 
-	// remove invalid transactions
-	transactions = removeInvalidTransactions(transactions, entries)
+	// Scramble entries
+	entries = scrambleAllegro(entries, seed)
 
-	// Get scrambled order
-	permutation := scramblePermutation(entries, seed)
-
-	// Apply permutation to transactions
-	return reorderTransactions(transactions, permutation)
+	// Cast transactions back to the original type
+	scrambled := make([]*types.Transaction, len(entries))
+	for i, tx := range entries {
+		scrambled[i] = tx.(*scramblerTransaction).Transaction
+	}
+	return scrambled
 }
 
 // IsScrambledAllegro checks if the transactions are in the correct order
@@ -37,6 +39,7 @@ func IsScrambledAllegro(entries []*types.Transaction, seed uint64, signer types.
 	// Convert transactions to scrambler entries
 	scramblerEntries := convertToScramblerEntry(entries, signer)
 
+	// Check if there has been an error in the conversion or duplicates
 	if len(scramblerEntries) != len(entries) {
 		return false
 	}
@@ -45,16 +48,22 @@ func IsScrambledAllegro(entries []*types.Transaction, seed uint64, signer types.
 	return isScrambledAllegro(scramblerEntries, seed)
 }
 
-// convertToScramblerEntry converts a list of transactions to a list of
+// convertToScramblerEntry converts a list of transactions to a unique list of
 // scrambler entries. The scrambler entry contains the fields required for
 // scrambling the transactions.
 func convertToScramblerEntry(transactions []*types.Transaction, signer types.Signer) []ScramblerEntry {
+	seen := make(map[common.Hash]struct{})
 	entries := make([]ScramblerEntry, 0, len(transactions))
 	for _, tx := range transactions {
 		sender, err := types.Sender(signer, tx)
 		if err != nil {
 			continue
 		}
+
+		if _, ok := seen[tx.Hash()]; ok {
+			continue
+		}
+		seen[tx.Hash()] = struct{}{}
 
 		entry := &scramblerTransaction{
 			Transaction: tx,
@@ -65,35 +74,20 @@ func convertToScramblerEntry(transactions []*types.Transaction, signer types.Sig
 	return entries
 }
 
-// removeInvalidTransactions removes invalid transactions from the list of
-// transactions.
-func removeInvalidTransactions(transactions []*types.Transaction, entries []ScramblerEntry) []*types.Transaction {
-	if len(entries) != len(transactions) {
-		transactions = slices.DeleteFunc(transactions, func(tx *types.Transaction) bool {
-			return !slices.ContainsFunc(entries, func(entry ScramblerEntry) bool {
-				return tx.Hash().Cmp(entry.Hash()) == 0
-			})
-		})
-	}
-	return transactions
-}
-
-// scramblePermutation takes a seed and a list of transactions and returns
-// a permutation of the transactions. The permutation is done in a way that
+// scrambleAllegro takes a seed and a list of transactions and returns
+// a scrambled list of the transactions. The scrambling is done in a way that
 // it is deterministic and can be reproduced by using the same seed.
-func scramblePermutation(transactions []ScramblerEntry, seed uint64) []int {
+func scrambleAllegro(transactions []ScramblerEntry, seed uint64) []ScramblerEntry {
 	// Group transactions by sender
-	sendersTransactions := map[common.Address][]int{}
-	for idx, tx := range transactions {
-		sendersTransactions[tx.Sender()] = append(sendersTransactions[tx.Sender()], idx)
+	sendersTransactions := map[common.Address][]ScramblerEntry{}
+	for _, tx := range transactions {
+		sendersTransactions[tx.Sender()] = append(sendersTransactions[tx.Sender()], tx)
 	}
 
 	// Sort transactions by nonce, gas price and hash
 	for _, txs := range sendersTransactions {
 		// Sort by nonce
-		slices.SortFunc(txs, func(idxA, idxB int) int {
-			a := transactions[idxA]
-			b := transactions[idxB]
+		slices.SortFunc(txs, func(a, b ScramblerEntry) int {
 			res := cmp.Compare(a.Nonce(), b.Nonce())
 			if res != 0 {
 				return res
@@ -116,17 +110,18 @@ func scramblePermutation(transactions []ScramblerEntry, seed uint64) []int {
 	senders = scrambleEntries(senders, seed)
 
 	// Save permutation of transactions
-	permutation := make([]int, 0, len(transactions))
+	scrambledTransactions := make([]ScramblerEntry, 0, len(transactions))
 	for _, sender := range senders {
-		permutation = append(permutation, sendersTransactions[sender]...)
+		scrambledTransactions = append(scrambledTransactions, sendersTransactions[sender]...)
 	}
 
-	return permutation
+	return scrambledTransactions
 }
 
 // scrambleEntries shuffles the entries in place using the given seed.
-// It uses the Fisher-Yates shuffle algorithm to ensure that the shuffle is
-// uniform and unbiased. https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
+// It uses the Fisher-Yates shuffle algorithm which is unbiased and
+// reproducible given the same seed.
+// For more details see: https://en.wikipedia.org/wiki/Fisher%E2%80%93Yates_shuffle
 func scrambleEntries[T any](entries []T, seed uint64) []T {
 	randomGenerator := randomGenerator{}
 	randomGenerator.seed(seed)
@@ -138,16 +133,6 @@ func scrambleEntries[T any](entries []T, seed uint64) []T {
 	return entries
 }
 
-// reorderTransactions takes a list of transactions and a permutation and
-// returns a new list of transactions in the order specified by the permutation.
-func reorderTransactions[T any](entries []T, permutation []int) []T {
-	scrambledTransactions := make([]T, len(permutation))
-	for i, idx := range permutation {
-		scrambledTransactions[i] = entries[idx]
-	}
-	return scrambledTransactions
-}
-
 // isScrambledAllegro checks if the entries are in the correct order according
 // to the allegro scrambling.
 func isScrambledAllegro(entries []ScramblerEntry, seed uint64) bool {
@@ -157,9 +142,7 @@ func isScrambledAllegro(entries []ScramblerEntry, seed uint64) bool {
 
 	senders := transactionSenders(entries)
 	senders = scrambleEntries(senders, seed)
-
 	previous := entries[0]
-
 	// Check if the order of the entries is correct
 	for i, tx := range entries {
 		if i == 0 {

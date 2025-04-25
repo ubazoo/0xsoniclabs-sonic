@@ -12,7 +12,7 @@ type randomGenerator struct {
 	state uint64
 }
 
-// seed initializes the xorShiftStar random number generator with the given seed.
+// seed initializes the xorShift* random number generator with the given seed.
 func (x *randomGenerator) seed(seed uint64) {
 	x.state = seed
 }
@@ -36,7 +36,7 @@ func (x *randomGenerator) next() uint64 {
 }
 
 // randN returns a uniformly sampled random number in the range [0, n) using
-// the xorshift* algorithm. If n is zero, 0 is returned.
+// the xorshift* algorithm. If n is 0 or 1, 0 is returned.
 func (x *randomGenerator) randN(n uint64) uint64 {
 	const uint64Max = math.MaxUint64
 
