@@ -153,7 +153,7 @@ func FuzzScramblerAllegro(f *testing.F) {
 			txs = append(txs, tx)
 		}
 
-		ordered := scrambler.Scramble(txs, 42, signer)
+		ordered := scrambler.Scramble(txs, seed, signer)
 
 		// clone result to re-shuffle, reorder, and compare the results
 		testList := slices.Clone(ordered)
@@ -164,7 +164,7 @@ func FuzzScramblerAllegro(f *testing.F) {
 		})
 
 		// re-order the list
-		reOrdered := scrambler.Scramble(txs, 42, signer)
+		reOrdered := scrambler.Scramble(txs, seed, signer)
 
 		// compare the results
 		if expected, got := len(reOrdered), len(ordered); expected != got {
@@ -179,7 +179,7 @@ func FuzzScramblerAllegro(f *testing.F) {
 				}
 			}
 		}
-		isOrdered := scrambler.IsScrambledAllegro(ordered, 42, signer)
+		isOrdered := scrambler.IsScrambledAllegro(ordered, seed, signer)
 		if !isOrdered {
 			t.Fatal("transactions are not ordered")
 			for _, tx := range ordered {

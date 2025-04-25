@@ -20,6 +20,9 @@ func Scramble(transactions []*types.Transaction, seed uint64, signer types.Signe
 	// Convert transactions to scrambler entries
 	entries := convertToScramblerEntry(transactions, signer)
 
+	// remove invalid transactions
+	transactions = removeInvalidTransactions(transactions, entries)
+
 	// Get scrambled order
 	permutation := scramblePermutation(entries, seed)
 
@@ -33,6 +36,10 @@ func Scramble(transactions []*types.Transaction, seed uint64, signer types.Signe
 func IsScrambledAllegro(entries []*types.Transaction, seed uint64, signer types.Signer) bool {
 	// Convert transactions to scrambler entries
 	scramblerEntries := convertToScramblerEntry(entries, signer)
+
+	if len(scramblerEntries) != len(entries) {
+		return false
+	}
 
 	// Check if the order of the entries is correct
 	return isScrambledAllegro(scramblerEntries, seed)
@@ -56,6 +63,19 @@ func convertToScramblerEntry(transactions []*types.Transaction, signer types.Sig
 		entries = append(entries, entry)
 	}
 	return entries
+}
+
+// removeInvalidTransactions removes invalid transactions from the list of
+// transactions.
+func removeInvalidTransactions(transactions []*types.Transaction, entries []ScramblerEntry) []*types.Transaction {
+	if len(entries) != len(transactions) {
+		transactions = slices.DeleteFunc(transactions, func(tx *types.Transaction) bool {
+			return !slices.ContainsFunc(entries, func(entry ScramblerEntry) bool {
+				return tx.Hash().Cmp(entry.Hash()) == 0
+			})
+		})
+	}
+	return transactions
 }
 
 // scramblePermutation takes a seed and a list of transactions and returns

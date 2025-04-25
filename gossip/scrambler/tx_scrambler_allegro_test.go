@@ -62,7 +62,7 @@ func TestScrambler_EndToEnd(t *testing.T) {
 	require.Equal(t, transactions, transactions2, "scrambling should be deterministic")
 }
 
-func TestScrambler_DecodingError(t *testing.T) {
+func TestScrambler_ScrambleDecodingError(t *testing.T) {
 	input := types.Transactions{
 		types.NewTx(&types.LegacyTx{
 			Nonce: 0,
@@ -95,6 +95,31 @@ func TestScrambler_DecodingError(t *testing.T) {
 	output := Scramble(input, 42, signer)
 	if len(output) != 3 {
 		t.Fatalf("expected 3 transactions, got %d", len(output))
+	}
+}
+
+func TestScrambler_IsAllegroScrambleDecodingError(t *testing.T) {
+	input := types.Transactions{
+		types.NewTx(&types.LegacyTx{
+			Nonce: 0,
+			Gas:   0,
+		}),
+		types.NewTx(&types.LegacyTx{
+			Nonce: 1,
+			Gas:   0,
+		}),
+	}
+
+	ctrl := gomock.NewController(t)
+	signer := mock.NewMockTxSigner(ctrl)
+
+	gomock.InOrder(
+		signer.EXPECT().Sender(input[0]).Return(common.Address{1}, nil),
+		signer.EXPECT().Sender(input[1]).Return(common.Address{}, errors.New("error")),
+	)
+
+	if IsScrambledAllegro(input, 42, signer) {
+		t.Fatal("entries with decoding error should not be considered in the right scrambled order")
 	}
 }
 
@@ -472,6 +497,58 @@ func TestScrambler_ReorderTransactions(t *testing.T) {
 	indices := rand.Perm(len(items))
 	items = reorderTransactions(items, indices)
 	require.Equal(t, indices, items, "permutation should be the same as the original items")
+}
+
+func TestRemoveInvalidTransactions(t *testing.T) {
+	tx1 := types.NewTx(&types.LegacyTx{
+		Nonce: 0,
+		Gas:   0,
+	})
+	tx2 := types.NewTx(&types.LegacyTx{
+		Nonce: 1,
+		Gas:   1,
+	})
+	tx3 := types.NewTx(&types.LegacyTx{
+		Nonce: 2,
+		Gas:   2,
+	})
+
+	entry1 := &dummyScramblerEntry{hash: tx1.Hash()}
+	entry2 := &dummyScramblerEntry{hash: tx2.Hash()}
+
+	tests := map[string]struct {
+		transactions []*types.Transaction
+		entries      []ScramblerEntry
+		expectedLen  int
+	}{
+		"All transactions valid": {
+			transactions: []*types.Transaction{tx1, tx2},
+			entries:      []ScramblerEntry{entry1, entry2},
+			expectedLen:  2,
+		},
+		"Two transaction invalid": {
+			transactions: []*types.Transaction{tx1, tx2, tx3},
+			entries:      []ScramblerEntry{entry1, entry2},
+			expectedLen:  2,
+		},
+		"No valid transactions": {
+			transactions: []*types.Transaction{tx3},
+			entries:      []ScramblerEntry{entry1, entry2},
+			expectedLen:  0,
+		},
+		"Empty transactions and entries": {
+			transactions: []*types.Transaction{},
+			entries:      []ScramblerEntry{},
+			expectedLen:  0,
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := removeInvalidTransactions(test.transactions, test.entries)
+			require.Len(t, result, test.expectedLen, "unexpected number of valid transactions")
+		})
+	}
 }
 
 func generateScramblerInput(size int) []ScramblerEntry {
