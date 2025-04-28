@@ -18,6 +18,7 @@ package evmcore
 
 import (
 	"fmt"
+	evmstore "github.com/0xsoniclabs/sonic/proxy"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -73,6 +74,10 @@ func (p *StateProcessor) Process(
 ) (
 	receipts types.Receipts, allLogs []*types.Log, skipped []uint32, err error,
 ) {
+	statedb, err = evmstore.WrapStateDbWithFileLogger(statedb, block.NumberU64())
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to wrap state db with file logger: %w", err)
+	}
 	skipped = make([]uint32, 0, len(block.Transactions))
 	var (
 		gp           = new(core.GasPool).AddGas(block.GasLimit)
