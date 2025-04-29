@@ -254,11 +254,8 @@ func FuzzValidateTransaction(f *testing.F) {
 
 		// validateTx should not reject transactions that the processor would accept
 		if processorError != nil && validateErr == nil {
-			// if !errors.Is(validateErr, ErrNegativeValue) &&
 			// if the nonce is too high this is also acceptable for the validateTx
 			if !errorContains(processorError, fmt.Errorf("nonce too high")) {
-				// errors from the processor can be more detailed than errors from validateTx
-
 				if errors.Is(validateErr, ErrUnderpriced) {
 					t.Logf("feeCap: %v, baseFee: %v", feeCap, baseFee)
 				}
@@ -290,8 +287,12 @@ func makeTxOfType(txType uint8, nonce, gas uint64, feeCap, tip int64,
 	}
 
 	accessList := make([]types.AccessTuple, accessListSize)
-	for i := range accessListSize {
-		accessList[i] = types.AccessTuple{}
+	accessTuple := types.AccessTuple{
+		Address:     common.Address{0x42},
+		StorageKeys: []common.Hash{{0x42}},
+	}
+	for i := range accessList {
+		accessList[i] = accessTuple
 	}
 	authList := make([]types.SetCodeAuthorization, authListSize)
 	for j := range authListSize {
