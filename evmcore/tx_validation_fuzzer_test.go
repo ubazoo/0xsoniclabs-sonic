@@ -27,30 +27,163 @@ const (
 	testPrague   = 0x05
 )
 
+func addSeeds(f *testing.F) {
+	// Seed corpus with a few invalid-looking values
+	seeds := []struct {
+		// transaction values
+		txType   uint8
+		nonce    uint64
+		gas      uint64
+		feeCap   int64
+		tip      int64
+		value    int64
+		data     []byte
+		isCreate bool
+		// block context
+		blockNum int64
+		revision int8
+		// because the number of elements in access list and authorization list
+		// affects intrinsic gas cost, these values are fuzzed,
+		// but the actual values are not relevant for this test.
+		accessListSize uint
+		authListSize   uint
+		// state values
+		stateBalance uint64
+		stateNonce   uint64
+		maxGas       uint64
+		baseFee      uint64
+		minTip       uint64
+	}{
+		{
+			txType:         0,
+			nonce:          1,
+			gas:            42_000,
+			feeCap:         1_000,
+			tip:            500,
+			value:          0,
+			data:           []byte("hi"),
+			isCreate:       false,
+			blockNum:       1_000_000_000,
+			revision:       2,
+			accessListSize: 0,
+			authListSize:   0,
+			stateBalance:   1_000_000_000,
+			stateNonce:     1,
+			maxGas:         50_000,
+			baseFee:        1001,
+			minTip:         0,
+		},
+		{
+			txType:         1,
+			nonce:          1,
+			gas:            42_000,
+			feeCap:         1_000,
+			tip:            500,
+			value:          -1,
+			data:           []byte("123456789123456789123456789123456789123456789123456789"),
+			isCreate:       false,
+			blockNum:       123_456_789,
+			revision:       2,
+			accessListSize: 1,
+			authListSize:   0,
+			stateBalance:   1_000_000,
+			stateNonce:     42,
+			maxGas:         5_000,
+			baseFee:        5500,
+			minTip:         100,
+		},
+		{
+			txType:         2,
+			nonce:          1,
+			gas:            42_000,
+			feeCap:         1_000,
+			tip:            500,
+			value:          0,
+			data:           []byte(""),
+			isCreate:       false,
+			blockNum:       1_000_000_000,
+			revision:       3,
+			accessListSize: 2,
+			authListSize:   0,
+			stateBalance:   1_000,
+			stateNonce:     1,
+			maxGas:         500,
+			baseFee:        10_00,
+			minTip:         10_000,
+		},
+		{
+			txType:         3,
+			nonce:          1,
+			gas:            42_000,
+			feeCap:         1_000,
+			tip:            500,
+			value:          0,
+			data:           []byte("some"),
+			isCreate:       false,
+			blockNum:       1_000_000_000,
+			revision:       4,
+			accessListSize: 3,
+			authListSize:   0,
+			stateBalance:   0,
+			stateNonce:     1,
+			maxGas:         50_000,
+			baseFee:        500,
+			minTip:         0,
+		},
+		{
+			txType:         4,
+			nonce:          1,
+			gas:            42_000,
+			feeCap:         1_000,
+			tip:            500,
+			value:          5_000,
+			data:           []byte("code"),
+			isCreate:       false,
+			blockNum:       1_000_000_000,
+			revision:       5,
+			accessListSize: 3,
+			authListSize:   1,
+			stateBalance:   1_000_000,
+			stateNonce:     1,
+			maxGas:         50_000,
+			baseFee:        500,
+			minTip:         0,
+		},
+		{
+			txType:         2,
+			nonce:          1,
+			gas:            42_000,
+			feeCap:         65_000,
+			tip:            500,
+			value:          1,
+			data:           []byte(""),
+			isCreate:       false,
+			blockNum:       1_000_000_000,
+			revision:       5,
+			accessListSize: 0,
+			authListSize:   1,
+			stateBalance:   1_000_000,
+			stateNonce:     1,
+			maxGas:         50_000,
+			baseFee:        500,
+			minTip:         0,
+		},
+	}
+
+	for _, seed := range seeds {
+		f.Add(
+			seed.txType, seed.nonce, seed.gas, seed.feeCap, seed.tip, seed.value,
+			seed.data, seed.isCreate, seed.blockNum, seed.revision,
+			seed.accessListSize, seed.authListSize, seed.stateBalance,
+			seed.stateNonce, seed.maxGas, seed.baseFee, seed.minTip,
+		)
+	}
+}
+
 // FuzzValidateTransaction fuzzes the validateTx function with randomly generated transactions.
 func FuzzValidateTransaction(f *testing.F) {
 
-	// Seed corpus with a few valid-looking values
-	f.Add(uint8(0), uint64(1), uint64(42_000), int64(1_000), int64(500), int64(0),
-		[]byte("hi"), false,
-		int64(1_000_000_000), int8(1), uint(0), uint(0),
-	)
-	f.Add(uint8(1), uint64(1), uint64(42_000), int64(1_000), int64(500), int64(0),
-		[]byte("123456789123456789123456789123456789123456789123456789"), false,
-		int64(123_456_789), int8(2), uint(1), uint(0),
-	)
-	f.Add(uint8(2), uint64(1), uint64(42_000), int64(1_000), int64(500), int64(0),
-		[]byte(""), false,
-		int64(1_000_000_000), int8(3), uint(2), uint(0),
-	)
-	f.Add(uint8(3), uint64(1), uint64(42_000), int64(1_000), int64(500), int64(0),
-		[]byte("some"), false,
-		int64(1_000_000_000), int8(4), uint(3), uint(0),
-	)
-	f.Add(uint8(4), uint64(1), uint64(42_000), int64(1_000), int64(500), int64(0),
-		[]byte("code"), false,
-		int64(1_000_000_000), int8(5), uint(3), uint(1),
-	)
+	addSeeds(f)
 
 	f.Fuzz(func(t *testing.T,
 		// transaction values
