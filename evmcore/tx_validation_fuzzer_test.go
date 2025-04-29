@@ -28,7 +28,7 @@ const (
 )
 
 func addSeeds(f *testing.F) {
-	// Seed corpus with a few invalid-looking values
+	// Seed corpus with a few values to trigger different code paths.
 	seeds := []struct {
 		// transaction values
 		txType   uint8
@@ -43,8 +43,7 @@ func addSeeds(f *testing.F) {
 		blockNum int64
 		revision int8
 		// because the number of elements in access list and authorization list
-		// affects intrinsic gas cost, these values are fuzzed,
-		// but the actual values are not relevant for this test.
+		// affects intrinsic gas cost, these values are fuzzed.
 		accessListSize uint
 		authListSize   uint
 		// state values
@@ -54,10 +53,10 @@ func addSeeds(f *testing.F) {
 		baseFee      uint64
 		minTip       uint64
 	}{
-		{
+		{ // LegacyTx, london, enough balance, next nonce, little gas
 			txType:         0,
 			nonce:          1,
-			gas:            42_000,
+			gas:            20,
 			feeCap:         1_000,
 			tip:            500,
 			value:          0,
@@ -70,10 +69,10 @@ func addSeeds(f *testing.F) {
 			stateBalance:   1_000_000_000,
 			stateNonce:     1,
 			maxGas:         50_000,
-			baseFee:        1001,
+			baseFee:        1_001,
 			minTip:         0,
 		},
-		{
+		{ // access list tx, berlin, negative value, far future nonce, low fee cap
 			txType:         1,
 			nonce:          1,
 			gas:            42_000,
@@ -89,10 +88,10 @@ func addSeeds(f *testing.F) {
 			stateBalance:   1_000_000,
 			stateNonce:     42,
 			maxGas:         5_000,
-			baseFee:        5500,
+			baseFee:        5_500,
 			minTip:         100,
 		},
-		{
+		{ // dynamic fee tx, shanghai, low balance, right nonce, low tip, create, low max gas
 			txType:         2,
 			nonce:          1,
 			gas:            42_000,
@@ -100,7 +99,7 @@ func addSeeds(f *testing.F) {
 			tip:            500,
 			value:          0,
 			data:           []byte(""),
-			isCreate:       false,
+			isCreate:       true,
 			blockNum:       1_000_000_000,
 			revision:       3,
 			accessListSize: 2,
@@ -108,10 +107,10 @@ func addSeeds(f *testing.F) {
 			stateBalance:   1_000,
 			stateNonce:     1,
 			maxGas:         500,
-			baseFee:        10_00,
+			baseFee:        1_000,
 			minTip:         10_000,
 		},
-		{
+		{ // blob tx, cancun, no balance, good nonce,
 			txType:         3,
 			nonce:          1,
 			gas:            42_000,
@@ -130,10 +129,10 @@ func addSeeds(f *testing.F) {
 			baseFee:        500,
 			minTip:         0,
 		},
-		{
+		{ // set code tx, prague, auth list not empty, same gas as max gas, high min tip
 			txType:         4,
 			nonce:          1,
-			gas:            42_000,
+			gas:            50_000,
 			feeCap:         1_000,
 			tip:            500,
 			value:          5_000,
@@ -147,9 +146,9 @@ func addSeeds(f *testing.F) {
 			stateNonce:     1,
 			maxGas:         50_000,
 			baseFee:        500,
-			minTip:         0,
+			minTip:         1_000,
 		},
-		{
+		{ // a healthy transaction
 			txType:         2,
 			nonce:          1,
 			gas:            42_000,
@@ -265,6 +264,8 @@ func FuzzValidateTransaction(f *testing.F) {
 	})
 }
 
+// errorContains checks if the error contains the subErr message.
+// Returns false if either error is nil.
 func errorContains(err error, subErr error) bool {
 	if err == nil || subErr == nil {
 		return false
@@ -272,6 +273,7 @@ func errorContains(err error, subErr error) bool {
 	return strings.Contains(err.Error(), subErr.Error())
 }
 
+// makeTxOfType creates a transaction of the specified type with the given parameters.
 func makeTxOfType(txType uint8, nonce, gas uint64, feeCap, tip int64,
 	data []byte, value int64, isCreate bool, chainId *big.Int,
 	accessListSize, authListSize uint) types.TxData {
@@ -361,6 +363,7 @@ func makeTxOfType(txType uint8, nonce, gas uint64, feeCap, tip int64,
 	return tx
 }
 
+// stateExpectCalls sets up expected calls to the state mock object.
 func stateExpectCalls(state *state.MockStateDB) {
 	// expected calls to the state
 	any := gomock.Any()
@@ -401,6 +404,8 @@ func stateExpectCalls(state *state.MockStateDB) {
 	state.EXPECT().Witness().AnyTimes()
 }
 
+// makeTestEvm creates a new EVM instance for testing purposes.
+// It sets up the block context, chain configuration, and state database.
 func makeTestEvm(blockNum, basefee int64, evmGasPrice uint64, state vm.StateDB, revision int8, chainId *big.Int) *vm.EVM {
 
 	chainConfig := &params.ChainConfig{
@@ -473,6 +478,8 @@ func signTxForTestWithChainId(t *testing.T, tx types.TxData, chainId *big.Int) (
 	return address, signedTx
 }
 
+// getTestTransactionsOptionFromRevision creates a validationOptions struct
+// with the specified revision and chain ID.
 func getTestTransactionsOptionFromRevision(revision int8, chainId *big.Int,
 	maxGas uint64, BaseFee, MinTip int64) validationOptions {
 	opt := validationOptions{
