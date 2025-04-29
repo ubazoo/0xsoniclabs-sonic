@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/trie/utils"
 	"github.com/holiman/uint256"
 	"os"
+	"runtime/debug"
 )
 
 func WrapStateDbWithFileLogger(stateDb state.StateDB, blk uint64) (state.StateDB, error) {
@@ -298,7 +299,7 @@ func (l *loggingVmStateDb) Witness() *stateless.Witness {
 
 func (l *loggingVmStateDb) SetTxContext(thash common.Hash, ti int) {
 	l.db.SetTxContext(thash, ti)
-	l.writeLog("SetTxContext, %v, %v", thash, ti)
+	l.writeLog("SetTxContext, %v, %v\nSTACK TRACE: %s\n", thash, ti, string(debug.Stack()))
 }
 
 func (l *loggingVmStateDb) AddPreimage(hash common.Hash, data []byte) {
