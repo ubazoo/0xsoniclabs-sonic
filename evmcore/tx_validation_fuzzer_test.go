@@ -469,6 +469,7 @@ func makeTestEvm(blockNum, basefee int64, evmGasPrice uint64, state vm.StateDB, 
 // signTxForTest generates a new key, signs the transaction with it, and returns
 // the signer, address, and signed transaction.
 func signTxForTestWithChainId(t *testing.T, tx types.TxData, chainId *big.Int) (common.Address, *types.Transaction) {
+	t.Helper()
 	key, err := crypto.GenerateKey()
 	address := crypto.PubkeyToAddress(key.PublicKey)
 	require.NoError(t, err)
@@ -486,8 +487,9 @@ func getTestTransactionsOptionFromRevision(revision int8, chainId *big.Int,
 		currentMaxGas:  maxGas,
 		currentBaseFee: big.NewInt(BaseFee),
 		minTip:         big.NewInt(MinTip),
-		isLocal:        true,
-		signer:         types.NewPragueSigner(chainId),
+		// locally submitted transactions have the more relaxed validation version. Therefore we test local true.
+		isLocal: true,
+		signer:  types.NewPragueSigner(chainId),
 	}
 
 	switch revision {
