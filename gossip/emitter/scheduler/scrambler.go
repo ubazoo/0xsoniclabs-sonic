@@ -23,7 +23,7 @@ type prototypeScrambler struct{}
 // is a copy of the input slice, so the input is not modified.
 func (prototypeScrambler) scramble(transactions []*types.Transaction) []*types.Transaction {
 	// TODO: this is a proto-type implementation and needs to be replaced by
-	// a verifiable shuffling algorithm.
+	// a verifiable shuffling algorithm (issue #159).
 	res := slices.Clone(transactions)
 	rand.Shuffle(len(res), func(i, j int) {
 		res[i], res[j] = res[j], res[i]

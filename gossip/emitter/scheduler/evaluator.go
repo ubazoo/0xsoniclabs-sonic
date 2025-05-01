@@ -150,12 +150,12 @@ const (
 // evmProcessorFactory is an implementation of the processorFactory that wraps
 // the EVM state processor implementation provided by the evmcore package.
 type evmProcessorFactory struct {
-	// world provides access to the client state, including the current chain
-	// configuration and the state database.
-	world External
+	// chain provides access to the chain state retained by the client,
+	// including the current chain configuration and the state database.
+	chain Chain
 }
 
-type External interface {
+type Chain interface {
 	evmcore.DummyChain
 	GetEvmChainConfig() *params.ChainConfig
 	StateDB() state.StateDB
@@ -165,11 +165,11 @@ func (p *evmProcessorFactory) beginBlock(
 	block *evmcore.EvmBlock,
 ) processor {
 	// TODO: follow-up task - align this with c_block_callbacks.go
-	chainCfg := p.world.GetEvmChainConfig()
+	chainCfg := p.chain.GetEvmChainConfig()
 	vmConfig := opera.DefaultVMConfig
-	state := p.world.StateDB()
+	state := p.chain.StateDB()
 
-	stateProcessor := evmcore.NewStateProcessor(chainCfg, p.world)
+	stateProcessor := evmcore.NewStateProcessor(chainCfg, p.chain)
 	return &evmProcessor{
 		processor: stateProcessor.BeginBlock(block, state, vmConfig, nil),
 		stateDb:   state,

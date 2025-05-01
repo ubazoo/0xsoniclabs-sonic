@@ -147,31 +147,31 @@ func (mr *MockprocessorMockRecorder) run(tx, gasLimit any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "run", reflect.TypeOf((*Mockprocessor)(nil).run), tx, gasLimit)
 }
 
-// MockExternal is a mock of External interface.
-type MockExternal struct {
+// MockChain is a mock of Chain interface.
+type MockChain struct {
 	ctrl     *gomock.Controller
-	recorder *MockExternalMockRecorder
+	recorder *MockChainMockRecorder
 }
 
-// MockExternalMockRecorder is the mock recorder for MockExternal.
-type MockExternalMockRecorder struct {
-	mock *MockExternal
+// MockChainMockRecorder is the mock recorder for MockChain.
+type MockChainMockRecorder struct {
+	mock *MockChain
 }
 
-// NewMockExternal creates a new mock instance.
-func NewMockExternal(ctrl *gomock.Controller) *MockExternal {
-	mock := &MockExternal{ctrl: ctrl}
-	mock.recorder = &MockExternalMockRecorder{mock}
+// NewMockChain creates a new mock instance.
+func NewMockChain(ctrl *gomock.Controller) *MockChain {
+	mock := &MockChain{ctrl: ctrl}
+	mock.recorder = &MockChainMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockExternal) EXPECT() *MockExternalMockRecorder {
+func (m *MockChain) EXPECT() *MockChainMockRecorder {
 	return m.recorder
 }
 
 // GetEvmChainConfig mocks base method.
-func (m *MockExternal) GetEvmChainConfig() *params.ChainConfig {
+func (m *MockChain) GetEvmChainConfig() *params.ChainConfig {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetEvmChainConfig")
 	ret0, _ := ret[0].(*params.ChainConfig)
@@ -179,13 +179,13 @@ func (m *MockExternal) GetEvmChainConfig() *params.ChainConfig {
 }
 
 // GetEvmChainConfig indicates an expected call of GetEvmChainConfig.
-func (mr *MockExternalMockRecorder) GetEvmChainConfig() *gomock.Call {
+func (mr *MockChainMockRecorder) GetEvmChainConfig() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvmChainConfig", reflect.TypeOf((*MockExternal)(nil).GetEvmChainConfig))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEvmChainConfig", reflect.TypeOf((*MockChain)(nil).GetEvmChainConfig))
 }
 
 // GetHeader mocks base method.
-func (m *MockExternal) GetHeader(arg0 common.Hash, arg1 uint64) *evmcore.EvmHeader {
+func (m *MockChain) GetHeader(arg0 common.Hash, arg1 uint64) *evmcore.EvmHeader {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetHeader", arg0, arg1)
 	ret0, _ := ret[0].(*evmcore.EvmHeader)
@@ -193,13 +193,13 @@ func (m *MockExternal) GetHeader(arg0 common.Hash, arg1 uint64) *evmcore.EvmHead
 }
 
 // GetHeader indicates an expected call of GetHeader.
-func (mr *MockExternalMockRecorder) GetHeader(arg0, arg1 any) *gomock.Call {
+func (mr *MockChainMockRecorder) GetHeader(arg0, arg1 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHeader", reflect.TypeOf((*MockExternal)(nil).GetHeader), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHeader", reflect.TypeOf((*MockChain)(nil).GetHeader), arg0, arg1)
 }
 
 // StateDB mocks base method.
-func (m *MockExternal) StateDB() state.StateDB {
+func (m *MockChain) StateDB() state.StateDB {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StateDB")
 	ret0, _ := ret[0].(state.StateDB)
@@ -207,9 +207,9 @@ func (m *MockExternal) StateDB() state.StateDB {
 }
 
 // StateDB indicates an expected call of StateDB.
-func (mr *MockExternalMockRecorder) StateDB() *gomock.Call {
+func (mr *MockChainMockRecorder) StateDB() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StateDB", reflect.TypeOf((*MockExternal)(nil).StateDB))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StateDB", reflect.TypeOf((*MockChain)(nil).StateDB))
 }
 
 // MockevmProcessorRunner is a mock of evmProcessorRunner interface.

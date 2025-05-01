@@ -34,6 +34,7 @@ func TestScheduler_Schedule_ScramblesTransactionsBeforeEvaluation(t *testing.T) 
 		func(
 			_ context.Context, _ *BlockInfo, txs []*types.Transaction, _ uint64,
 		) ([]*types.Transaction, uint64, bool) {
+			t.Helper()
 			require.Equal(t, counter, txs[0].Nonce())
 			return nil, counter, false
 		},
@@ -191,6 +192,7 @@ func TestScheduler_Schedule_CanBeCanceled(t *testing.T) {
 			func(_ context.Context, _ *BlockInfo, txs []*types.Transaction, _ uint64) (
 				[]*types.Transaction, uint64, bool,
 			) {
+				t.Helper()
 				require.LessOrEqual(t, counter, numEvaluationsBeforeCancel)
 				if counter == numEvaluationsBeforeCancel {
 					cancel()

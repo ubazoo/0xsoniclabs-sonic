@@ -31,11 +31,11 @@ func TestIntegration_NoTransactions_ProducesAnEmptySchedule(t *testing.T) {
 
 func TestIntegration_OneTransactions_ProducesScheduleWithOneTransaction(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	world := NewMockExternal(ctrl)
+	chain := NewMockChain(ctrl)
 	state := state.NewMockStateDB(ctrl)
 
-	world.EXPECT().GetEvmChainConfig().Return(&params.ChainConfig{})
-	world.EXPECT().StateDB().Return(state)
+	chain.EXPECT().GetEvmChainConfig().Return(&params.ChainConfig{})
+	chain.EXPECT().StateDB().Return(state)
 
 	// The scheduler configured for production is running transactions on the
 	// actual EVM state processor. Thus, various StateDB interactions are
@@ -67,7 +67,7 @@ func TestIntegration_OneTransactions_ProducesScheduleWithOneTransaction(t *testi
 		}),
 	}
 
-	schedule := NewScheduler(world).Schedule(
+	schedule := NewScheduler(chain).Schedule(
 		t.Context(),
 		&BlockInfo{
 			GasLimit: 100_000_000,

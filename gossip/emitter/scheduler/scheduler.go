@@ -23,10 +23,10 @@ type Scheduler struct {
 // NewScheduler creates a new scheduler to be used in the the block emitter. The
 // provided world interface is used to obtain the current state of the chain
 // whenever transactions need to be scheduled.
-func NewScheduler(world External) *Scheduler {
+func NewScheduler(chain Chain) *Scheduler {
 	return newScheduler(
 		prototypeScrambler{},
-		&executingEvaluator{factory: &evmProcessorFactory{world: world}},
+		&executingEvaluator{factory: &evmProcessorFactory{chain: chain}},
 	)
 }
 
@@ -51,6 +51,11 @@ func newScheduler(
 //	gasUsage(scrambled(candidates)) <= gasLimit
 //
 // where candidates is a prefix of sortedTxs.
+//
+// The provided list of sortedTxs is expected to only enumerate transactions
+// with unique sender/nonce pairs. If there are duplicates, the scheduler is
+// free to schedule them in any order, making at most one of them part of the
+// resulting schedule.
 //
 // The resulting execution order is then the scrambled(candidates) list. This
 // should have the following effect:
