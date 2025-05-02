@@ -17,7 +17,7 @@ func TestPrototypeScrambler_DoesNotAlterTheInput(t *testing.T) {
 	backup := slices.Clone(input)
 
 	scrambler := prototypeScrambler{}
-	scrambler.scramble(input)
+	scrambler.scramble(input, nil, 0)
 	require.Equal(t, backup, input)
 }
 
@@ -30,7 +30,7 @@ func TestPrototypeScrambler_OutputContainsSameElementsAsInput(t *testing.T) {
 
 	scrambler := prototypeScrambler{}
 	for i := range len(input) {
-		output := scrambler.scramble(input[:i])
+		output := scrambler.scramble(input[:i], nil, 0)
 		require.ElementsMatch(t, input[:i], output)
 	}
 }

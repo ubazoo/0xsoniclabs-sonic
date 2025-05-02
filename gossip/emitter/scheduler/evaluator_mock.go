@@ -25,6 +25,7 @@ import (
 type Mockevaluator struct {
 	ctrl     *gomock.Controller
 	recorder *MockevaluatorMockRecorder
+	isgomock struct{}
 }
 
 // MockevaluatorMockRecorder is the mock recorder for Mockevaluator.
@@ -64,6 +65,7 @@ func (mr *MockevaluatorMockRecorder) evaluate(context, blockInfo, schedule, gasL
 type MockprocessorFactory struct {
 	ctrl     *gomock.Controller
 	recorder *MockprocessorFactoryMockRecorder
+	isgomock struct{}
 }
 
 // MockprocessorFactoryMockRecorder is the mock recorder for MockprocessorFactory.
@@ -101,6 +103,7 @@ func (mr *MockprocessorFactoryMockRecorder) beginBlock(arg0 any) *gomock.Call {
 type Mockprocessor struct {
 	ctrl     *gomock.Controller
 	recorder *MockprocessorMockRecorder
+	isgomock struct{}
 }
 
 // MockprocessorMockRecorder is the mock recorder for Mockprocessor.
@@ -151,6 +154,7 @@ func (mr *MockprocessorMockRecorder) run(tx, gasLimit any) *gomock.Call {
 type MockChain struct {
 	ctrl     *gomock.Controller
 	recorder *MockChainMockRecorder
+	isgomock struct{}
 }
 
 // MockChainMockRecorder is the mock recorder for MockChain.
@@ -216,6 +220,7 @@ func (mr *MockChainMockRecorder) StateDB() *gomock.Call {
 type MockevmProcessorRunner struct {
 	ctrl     *gomock.Controller
 	recorder *MockevmProcessorRunnerMockRecorder
+	isgomock struct{}
 }
 
 // MockevmProcessorRunnerMockRecorder is the mock recorder for MockevmProcessorRunner.

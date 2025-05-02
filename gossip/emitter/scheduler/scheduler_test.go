@@ -21,8 +21,8 @@ func TestScheduler_Schedule_ScramblesTransactionsBeforeEvaluation(t *testing.T) 
 
 	any := gomock.Any()
 	counter := uint64(0)
-	scrambler.EXPECT().scramble(any).DoAndReturn(
-		func([]*types.Transaction) []*types.Transaction {
+	scrambler.EXPECT().scramble(any, any, any).DoAndReturn(
+		func([]*types.Transaction, types.Signer, uint64) []*types.Transaction {
 			counter++
 			return []*types.Transaction{
 				types.NewTx(&types.LegacyTx{Nonce: counter}),

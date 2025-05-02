@@ -20,6 +20,7 @@ import (
 type Mockscrambler struct {
 	ctrl     *gomock.Controller
 	recorder *MockscramblerMockRecorder
+	isgomock struct{}
 }
 
 // MockscramblerMockRecorder is the mock recorder for Mockscrambler.
@@ -40,15 +41,15 @@ func (m *Mockscrambler) EXPECT() *MockscramblerMockRecorder {
 }
 
 // scramble mocks base method.
-func (m *Mockscrambler) scramble(arg0 []*types.Transaction) []*types.Transaction {
+func (m *Mockscrambler) scramble(transactions []*types.Transaction, signer types.Signer, seed uint64) []*types.Transaction {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "scramble", arg0)
+	ret := m.ctrl.Call(m, "scramble", transactions, signer, seed)
 	ret0, _ := ret[0].([]*types.Transaction)
 	return ret0
 }
 
 // scramble indicates an expected call of scramble.
-func (mr *MockscramblerMockRecorder) scramble(arg0 any) *gomock.Call {
+func (mr *MockscramblerMockRecorder) scramble(transactions, signer, seed any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "scramble", reflect.TypeOf((*Mockscrambler)(nil).scramble), arg0)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "scramble", reflect.TypeOf((*Mockscrambler)(nil).scramble), transactions, signer, seed)
 }

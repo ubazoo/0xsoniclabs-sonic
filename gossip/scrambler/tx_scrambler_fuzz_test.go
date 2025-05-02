@@ -97,6 +97,100 @@ func FuzzScrambler(f *testing.F) {
 	})
 }
 
+func FuzzScramblerAllegro(f *testing.F) {
+
+	signer := types.NewPragueSigner(big.NewInt(1))
+
+	// generate 256 account keys
+	accountKeys := make([]*ecdsa.PrivateKey, 256)
+	for i := range 256 {
+		key, err := crypto.GenerateKey()
+		require.NoError(f, err)
+		accountKeys[i] = key
+	}
+	maxMetaTransactionEncodedSize := metaTransactionSizeSerializeSize
+
+	f.Add(encodeTxList(f, []metaTransaction{}), uint64(0))
+	f.Add(encodeTxList(f, []metaTransaction{
+		{SenderAccount: 0, Nonce: 0, GasPrice: 0},
+		{SenderAccount: 0, Nonce: 1, GasPrice: 0},
+		{SenderAccount: 0, Nonce: 2, GasPrice: 0},
+	}),
+		uint64(42),
+	)
+	f.Add(encodeTxList(f, []metaTransaction{
+		{SenderAccount: 0, Nonce: 0, GasPrice: 1},
+		{SenderAccount: 1, Nonce: 0, GasPrice: 10_000},
+		{SenderAccount: 255, Nonce: 3, GasPrice: 10_000_000_000},
+	}),
+		uint64(100),
+	)
+
+	f.Fuzz(func(t *testing.T, encoded []byte, seed uint64) {
+
+		// Bind the input to some reasonable size.
+		// metaTransactions serialization size is variable, use worst case scenario
+		if len(encoded) > 10_000*maxMetaTransactionEncodedSize {
+			t.Skip("input too large")
+		}
+
+		metaTxs := parseFuzzedInput(encoded)
+		if containsDuplicates(metaTxs) {
+			// the scrambler takes as a precondition that transactions cannot be duplicated
+			t.Skip("contains duplicates")
+		}
+
+		txs := make([]*types.Transaction, 0, len(metaTxs))
+		for _, metaTx := range metaTxs {
+
+			key := accountKeys[metaTx.SenderAccount]
+			tx, err := types.SignTx(types.NewTx(&types.LegacyTx{
+				Nonce:    metaTx.Nonce,
+				GasPrice: big.NewInt(int64(metaTx.GasPrice)),
+			}), signer, key)
+			require.NoError(t, err)
+
+			txs = append(txs, tx)
+		}
+
+		ordered := scrambler.Scramble(txs, seed, signer)
+
+		// clone result to re-shuffle, reorder, and compare the results
+		testList := slices.Clone(ordered)
+
+		// shuffle the list, but in a deterministic way
+		slices.SortFunc(testList, func(a, b *types.Transaction) int {
+			return bytes.Compare(a.Hash().Bytes(), b.Hash().Bytes())
+		})
+
+		// re-order the list
+		reOrdered := scrambler.Scramble(txs, seed, signer)
+
+		// compare the results
+		if expected, got := len(reOrdered), len(ordered); expected != got {
+			t.Fatalf("scrambler did not produce same number of transactions; expected %d, got %d", expected, got)
+		}
+		for i := range reOrdered {
+			if reOrdered[i].Hash() != ordered[i].Hash() {
+				t.Errorf("transactions are not sorted")
+				for i, tx := range ordered {
+					sender, _ := types.Sender(signer, tx)
+					t.Logf("tx[%d]: hash %s sender %s nonce: %d gasprice, %d", i, tx.Hash().Hex(), sender.Hex(), tx.Nonce(), tx.GasPrice())
+				}
+			}
+		}
+		isOrdered := scrambler.IsScrambledAllegro(ordered, seed, signer)
+		if !isOrdered {
+			t.Fatal("transactions are not ordered")
+			for _, tx := range ordered {
+				sender, err := types.Sender(signer, tx)
+				require.NoError(t, err)
+				t.Logf("Sender %v, Nonce %v, GasPrice %v, Hash %v", sender, tx.Nonce(), tx.GasPrice(), tx.Hash())
+			}
+		}
+	})
+}
+
 func containsDuplicates(txs []metaTransaction) bool {
 	seen := make(map[uint8]map[uint64]struct{})
 	for _, tx := range txs {

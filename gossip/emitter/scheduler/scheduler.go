@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"iter"
+	"math/big"
 
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
@@ -82,7 +83,9 @@ func (s *Scheduler) Schedule(
 		// Scramble and evaluate the resulting list of transactions. Transactions
 		// are verifiably scrambled to limit the influence of proposers on the
 		// transaction order.
-		scrambled := s.scrambler.scramble(candidates)
+		signer := types.LatestSignerForChainID(blockInfo.ChainID)
+		randao := blockInfo.PrevRandao.Big().Uint64() // TODO: convert to uint64 in a deterministic way
+		scrambled := s.scrambler.scramble(candidates, signer, randao)
 		order, gasUsed, reachedLimit := s.evaluator.evaluate(
 			context, blockInfo, scrambled, gasLimit,
 		)
@@ -163,6 +166,8 @@ type BlockInfo struct {
 	// Note: ChainID would be another candidate field to be included, but it is
 	// not block specific, and thus not part of the block header to be configured
 	// by the scheduler for try-running transactions.
+
+	ChainID *big.Int
 
 	// Number of the block being scheduled, accessible by the NUMBER opcode.
 	Number idx.Block
