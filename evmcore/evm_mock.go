@@ -12,43 +12,44 @@ package evmcore
 import (
 	reflect "reflect"
 
+	idx "github.com/Fantom-foundation/lachesis-base/inter/idx"
 	common "github.com/ethereum/go-ethereum/common"
 	gomock "go.uber.org/mock/gomock"
 )
 
-// MockDummyChain is a mock of DummyChain interface.
-type MockDummyChain struct {
+// MockBlockHashProvider is a mock of BlockHashProvider interface.
+type MockBlockHashProvider struct {
 	ctrl     *gomock.Controller
-	recorder *MockDummyChainMockRecorder
+	recorder *MockBlockHashProviderMockRecorder
 }
 
-// MockDummyChainMockRecorder is the mock recorder for MockDummyChain.
-type MockDummyChainMockRecorder struct {
-	mock *MockDummyChain
+// MockBlockHashProviderMockRecorder is the mock recorder for MockBlockHashProvider.
+type MockBlockHashProviderMockRecorder struct {
+	mock *MockBlockHashProvider
 }
 
-// NewMockDummyChain creates a new mock instance.
-func NewMockDummyChain(ctrl *gomock.Controller) *MockDummyChain {
-	mock := &MockDummyChain{ctrl: ctrl}
-	mock.recorder = &MockDummyChainMockRecorder{mock}
+// NewMockBlockHashProvider creates a new mock instance.
+func NewMockBlockHashProvider(ctrl *gomock.Controller) *MockBlockHashProvider {
+	mock := &MockBlockHashProvider{ctrl: ctrl}
+	mock.recorder = &MockBlockHashProviderMockRecorder{mock}
 	return mock
 }
 
 // EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockDummyChain) EXPECT() *MockDummyChainMockRecorder {
+func (m *MockBlockHashProvider) EXPECT() *MockBlockHashProviderMockRecorder {
 	return m.recorder
 }
 
-// GetHeader mocks base method.
-func (m *MockDummyChain) GetHeader(arg0 common.Hash, arg1 uint64) *EvmHeader {
+// GetBlockHash mocks base method.
+func (m *MockBlockHashProvider) GetBlockHash(arg0 idx.Block) common.Hash {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetHeader", arg0, arg1)
-	ret0, _ := ret[0].(*EvmHeader)
+	ret := m.ctrl.Call(m, "GetBlockHash", arg0)
+	ret0, _ := ret[0].(common.Hash)
 	return ret0
 }
 
-// GetHeader indicates an expected call of GetHeader.
-func (mr *MockDummyChainMockRecorder) GetHeader(arg0, arg1 any) *gomock.Call {
+// GetBlockHash indicates an expected call of GetBlockHash.
+func (mr *MockBlockHashProviderMockRecorder) GetBlockHash(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHeader", reflect.TypeOf((*MockDummyChain)(nil).GetHeader), arg0, arg1)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBlockHash", reflect.TypeOf((*MockBlockHashProvider)(nil).GetBlockHash), arg0)
 }

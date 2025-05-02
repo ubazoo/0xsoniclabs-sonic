@@ -75,8 +75,8 @@ func TestProcess_ReportsReceiptsOfProcessedTransactions(t *testing.T) {
 	state := getStateDbMockForTransactions(ctrl, transactions)
 
 	chainConfig := params.ChainConfig{}
-	chain := NewMockDummyChain(ctrl)
-	processor := NewStateProcessor(&chainConfig, chain)
+	hashProvider := NewMockBlockHashProvider(ctrl)
+	processor := NewStateProcessor(&chainConfig, hashProvider)
 
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
@@ -156,7 +156,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	ctrl := gomock.NewController(t)
 
 	chainConfig := params.ChainConfig{}
-	chain := NewMockDummyChain(ctrl)
+	hashProvider := NewMockBlockHashProvider(ctrl)
 
 	// The conversion into a evmcore Message depends on the ability to check
 	// the signature and to derive the sender address. To stimulate a failure
@@ -169,7 +169,7 @@ func TestProcess_DetectsTransactionThatCanNotBeConvertedIntoAMessage(t *testing.
 	}
 
 	state := getStateDbMockForTransactions(ctrl, transactions)
-	processor := NewStateProcessor(&chainConfig, chain)
+	processor := NewStateProcessor(&chainConfig, hashProvider)
 	tests := map[string]processFunction{
 		"bulk":        processor.Process,
 		"incremental": processor.process_iteratively,
@@ -211,7 +211,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 				PragueTime:  new(uint64),
 			}
 		}
-		chain := NewMockDummyChain(ctrl)
+		hashProvider := NewMockBlockHashProvider(ctrl)
 
 		state := state.NewMockStateDB(ctrl)
 
@@ -226,7 +226,7 @@ func TestProcess_TracksParentBlockHashIfPragueIsEnabled(t *testing.T) {
 			state.EXPECT().Finalise(any).AnyTimes()
 		}
 
-		processor := NewStateProcessor(&chainConfig, chain)
+		processor := NewStateProcessor(&chainConfig, hashProvider)
 
 		tests := map[string]processFunction{
 			"bulk":        processor.Process,

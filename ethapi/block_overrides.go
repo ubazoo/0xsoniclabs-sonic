@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/0xsoniclabs/sonic/evmcore"
+	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -74,15 +75,12 @@ type chainContext struct {
 	ctx context.Context
 }
 
-func (context *chainContext) GetHeader(hash common.Hash, number uint64) *evmcore.EvmHeader {
+func (context *chainContext) GetBlockHash(number idx.Block) common.Hash {
 	// This method is called to get the hash for a block number when executing the BLOCKHASH
 	// opcode. Hence no need to search for non-canonical blocks.
 	header, err := context.b.HeaderByNumber(context.ctx, rpc.BlockNumber(number))
 	if header == nil || err != nil {
-		return nil
+		return common.Hash{}
 	}
-	if header.Hash != hash {
-		return nil
-	}
-	return header
+	return header.Hash
 }

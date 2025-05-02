@@ -26,7 +26,7 @@ func New() *EVMModule {
 func (p *EVMModule) Start(
 	block iblockproc.BlockCtx,
 	statedb state.StateDB,
-	reader evmcore.DummyChain,
+	blockProvider BlockProvider,
 	onNewLog func(*types.Log),
 	net opera.Rules,
 	evmCfg *params.ChainConfig,
@@ -37,7 +37,7 @@ func (p *EVMModule) Start(
 	if block.Idx == 0 {
 		baseFee = gasprice.GetInitialBaseFee(net.Economy)
 	} else {
-		header := reader.GetHeader(common.Hash{}, uint64(block.Idx-1))
+		header := blockProvider.GetBlockHeader(uint64(block.Idx - 1))
 		prevBlockHash = header.Hash
 		baseFee = gasprice.GetBaseFeeForNextBlock(header, net.Economy)
 	}
@@ -47,7 +47,7 @@ func (p *EVMModule) Start(
 
 	return &OperaEVMProcessor{
 		block:         block,
-		reader:        reader,
+		hashProvider:  blockProvider,
 		statedb:       statedb,
 		onNewLog:      onNewLog,
 		net:           net,
@@ -59,13 +59,18 @@ func (p *EVMModule) Start(
 	}
 }
 
+type BlockProvider interface {
+	GetBlockHash(blockNumber uint64) common.Hash
+	GetBlockHeader(blockNumber uint64) *evmcore.EvmHeader
+}
+
 type OperaEVMProcessor struct {
-	block    iblockproc.BlockCtx
-	reader   evmcore.DummyChain
-	statedb  state.StateDB
-	onNewLog func(*types.Log)
-	net      opera.Rules
-	evmCfg   *params.ChainConfig
+	block        iblockproc.BlockCtx
+	hashProvider evmcore.BlockHashProvider
+	statedb      state.StateDB
+	onNewLog     func(*types.Log)
+	net          opera.Rules
+	evmCfg       *params.ChainConfig
 
 	blockIdx      *big.Int
 	prevBlockHash common.Hash
@@ -116,7 +121,7 @@ func (p *OperaEVMProcessor) evmBlockWith(txs types.Transactions) *evmcore.EvmBlo
 }
 
 func (p *OperaEVMProcessor) Execute(txs types.Transactions) types.Receipts {
-	evmProcessor := evmcore.NewStateProcessor(p.evmCfg, p.reader)
+	evmProcessor := evmcore.NewStateProcessor(p.evmCfg, p.hashProvider)
 	txsOffset := uint(len(p.incomingTxs))
 
 	// Process txs

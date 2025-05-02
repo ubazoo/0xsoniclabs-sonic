@@ -37,15 +37,15 @@ import (
 //
 // StateProcessor implements Processor.
 type StateProcessor struct {
-	config *params.ChainConfig // Chain configuration options
-	bc     DummyChain          // Canonical block chain
+	config *params.ChainConfig // chain configuration options
+	hashes BlockHashProvider   // access to past block hashes
 }
 
 // NewStateProcessor initialises a new StateProcessor.
-func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcessor {
+func NewStateProcessor(config *params.ChainConfig, hashes BlockHashProvider) *StateProcessor {
 	return &StateProcessor{
 		config: config,
-		bc:     bc,
+		hashes: hashes,
 	}
 }
 
@@ -80,7 +80,7 @@ func (p *StateProcessor) Process(
 		skip         bool
 		header       = block.Header()
 		time         = uint64(block.Time.Unix())
-		blockContext = NewEVMBlockContext(header, p.bc, nil)
+		blockContext = NewEVMBlockContext(header, p.hashes, nil)
 		vmenv        = vm.NewEVM(blockContext, statedb, p.config, cfg)
 		blockNumber  = block.Number
 		signer       = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))
@@ -127,7 +127,7 @@ func (p *StateProcessor) BeginBlock(
 		gp            = new(core.GasPool).AddGas(block.GasLimit)
 		header        = block.Header()
 		time          = uint64(block.Time.Unix())
-		blockContext  = NewEVMBlockContext(header, p.bc, nil)
+		blockContext  = NewEVMBlockContext(header, p.hashes, nil)
 		vmEnvironment = vm.NewEVM(blockContext, stateDb, p.config, cfg)
 		blockNumber   = block.Number
 		signer        = gsignercache.Wrap(types.MakeSigner(p.config, header.Number, time))

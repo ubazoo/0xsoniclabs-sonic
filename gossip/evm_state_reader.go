@@ -78,6 +78,18 @@ func (r *EvmStateReader) GetHeader(h common.Hash, n uint64) *evmcore.EvmHeader {
 	return r.getBlock(h, idx.Block(n), false).Header()
 }
 
+func (r *EvmStateReader) GetBlockHash(n uint64) common.Hash {
+	block := r.store.GetBlock(idx.Block(n))
+	if block == nil {
+		return common.Hash{}
+	}
+	return block.Hash()
+}
+
+func (r *EvmStateReader) GetBlockHeader(n uint64) *evmcore.EvmHeader {
+	return r.getBlock(common.Hash{}, idx.Block(n), false).Header()
+}
+
 func (r *EvmStateReader) GetBlock(h common.Hash, n uint64) *evmcore.EvmBlock {
 	return r.getBlock(h, idx.Block(n), true)
 }
