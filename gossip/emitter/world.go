@@ -9,7 +9,9 @@ import (
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/params"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -40,6 +42,8 @@ type (
 		PeersNum() int
 
 		StateDB() state.StateDB
+		GetUpgradeHeights() []opera.UpgradeHeight
+		GetHeader(common.Hash, uint64) *evmcore.EvmHeader // < this is only needed to look up hashes of past blocks; this is way to complicated and should be cleaned up
 	}
 
 	// aliases for mock generator
@@ -63,6 +67,8 @@ type (
 // Reader is a callback for getting events from an external storage.
 type Reader interface {
 	GetLatestBlockIndex() idx.Block
+	GetLatestBlock() *inter.Block
+	GetEpochStartBlock(idx.Epoch) idx.Block
 	GetEpochValidators() (*pos.Validators, idx.Epoch)
 	GetEvent(hash.Event) *inter.Event
 	GetEventPayload(hash.Event) *inter.EventPayload
@@ -82,4 +88,8 @@ type TxPool interface {
 
 	// Count returns the total number of transactions
 	Count() int
+}
+
+func (w *World) GetEvmChainConfig() *params.ChainConfig {
+	return w.GetRules().EvmChainConfig(w.GetUpgradeHeights())
 }
