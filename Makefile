@@ -61,19 +61,19 @@ integration-coverage:
 integration-cover-all: PACKAGES=./...
 integration-cover-all: integration-coverage
 
-.PHONY: fuzz-validate-cover
-fuzz-validate-cover: PACKAGES=./...,github.com/ethereum/go-ethereum/core/...
-fuzz-validate-cover: DATE=$(shell date +"%Y-%m-%d-%T")
-fuzz-validate-cover: export GOCOVERDIR=./build/coverage/fuzz-validate/${DATE}
-fuzz-validate-cover: SEEDDIR=$$(go env GOCACHE)/fuzz/github.com/0xsoniclabs/sonic/evmcore/FuzzValidateTransaction/
-fuzz-validate-cover: TEMPSEEDDIR=./evmcore/testdata/fuzz/FuzzValidateTransaction/
-fuzz-validate-cover:
+.PHONY: fuzz-txpool-validatetx-cover
+fuzz-txpool-validatetx-cover: PACKAGES=./...,github.com/ethereum/go-ethereum/core/...
+fuzz-txpool-validatetx-cover: DATE=$(shell date +"%Y-%m-%d-%T")
+fuzz-txpool-validatetx-cover: export GOCOVERDIR=./build/coverage/fuzz-validate/${DATE}
+fuzz-txpool-validatetx-cover: SEEDDIR=$$(go env GOCACHE)/fuzz/github.com/0xsoniclabs/sonic/evmcore/FuzzValidateTransaction/
+fuzz-txpool-validatetx-cover: TEMPSEEDDIR=./evmcore/testdata/fuzz/FuzzValidateTransaction/
+fuzz-txpool-validatetx-cover:
 	@mkdir -p ${GOCOVERDIR} ;\
      mkdir -p ${TEMPSEEDDIR} ;\
-	  go test -fuzz=FuzzValidateTransaction -fuzztime=2m ./evmcore/ ;\
+	 go test -fuzz=FuzzValidateTransaction -fuzztime=2m ./evmcore/ ;\
      cp -r ${SEEDDIR}* ${TEMPSEEDDIR} ;\
-     go test -v -run FuzzValidateTransaction -coverprofile=${GOCOVERDIR}/fuzz-validate-cover.out -coverpkg=${PACKAGES} ./evmcore/ ;\
-     go tool cover -html ${GOCOVERDIR}/fuzz-validate-cover.out -o ${GOCOVERDIR}/fuzz-validate-coverage.html ;\
+     go test -v -run FuzzValidateTransaction -coverprofile=${GOCOVERDIR}/fuzz-txpool-validatetx-cover.out -coverpkg=${PACKAGES} ./evmcore/ ;\
+     go tool cover -html ${GOCOVERDIR}/fuzz-txpool-validatetx-cover.out -o ${GOCOVERDIR}/fuzz-txpool-validatetx-coverage.html ;\
      rm -rf ${TEMPSEEDDIR} ;\
 
 .PHONY: clean

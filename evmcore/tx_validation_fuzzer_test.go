@@ -200,15 +200,15 @@ func FuzzValidateTransaction(f *testing.F) {
 
 		if txType > types.SetCodeTxType {
 			// Skip invalid transaction types
-			return
+			t.Skip()
 		}
 		if revision > testPrague {
 			// Skip invalid revisions
-			return
+			t.Skip()
 		}
 		if isCreate && (txType == types.BlobTxType || txType == types.SetCodeTxType) {
 			// Skip invalid transaction types for contract creation
-			return
+			t.Skip()
 		}
 
 		// a full persistent state is not need. ValidateTx needs to see the same state as the processor.
