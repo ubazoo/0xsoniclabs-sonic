@@ -17,6 +17,7 @@
 package evmcore
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -85,6 +86,11 @@ func (p *StateProcessor) Process(
 	)
 	// record-replay
 	if oldBlockNumber != block.NumberU64() {
+		err = innerSubstate.WriteUnprocessedSkippedTxToFile()
+		if err != nil {
+			return nil, nil, nil, fmt.Errorf("could not write skipped tx states to file %d [%v]: %w", block.NumberU64(), txCounter, err)
+		}
+
 		txCounter = 0
 		oldBlockNumber = block.NumberU64()
 	}
@@ -98,6 +104,22 @@ func (p *StateProcessor) Process(
 		statedb.SetTxContext(tx.Hash(), i)
 		receipt, _, skip, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
 		if skip {
+			if recordSubstate.RecordReplay && errors.Is(err, core.ErrMaxInitCodeSizeExceeded) {
+				//max initcode size exceeded: code size
+				// Finalize didn't happen load preAlloc and postAlloc without calling it
+				dirtyAddresses := statedb.RecordPreFinalise()
+				statedb.RecordPostFinalise(dirtyAddresses)
+
+				pre := statedb.GetSubstatePreAlloc()
+				post := statedb.GetSubstatePostAlloc()
+
+				// write block, txCounter, pre, post to txt file
+				err = innerSubstate.RegisterSkippedTx(blockNumber.Uint64(), txCounter, pre, post)
+				if err != nil {
+					return nil, nil, nil, fmt.Errorf("could not write skipped tx state to file %d [%v]: %w", i, tx.Hash().Hex(), err)
+				}
+			}
+
 			skipped = append(skipped, uint32(i))
 			receipts = append(receipts, nil)
 			err = nil

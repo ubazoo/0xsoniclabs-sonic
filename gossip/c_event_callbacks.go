@@ -2,9 +2,10 @@ package gossip
 
 import (
 	"errors"
-	"github.com/ethereum/go-ethereum/metrics"
 	"math/big"
 	"sync/atomic"
+
+	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/Fantom-foundation/lachesis-base/gossip/dagprocessor"
 	"github.com/Fantom-foundation/lachesis-base/hash"
