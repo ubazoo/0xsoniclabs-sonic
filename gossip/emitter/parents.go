@@ -22,8 +22,8 @@ func (em *Emitter) buildSearchStrategies(maxParents consensus.Seq) []ancestor.Se
 	for consensus.Seq(len(strategies)) < maxParents/2 {
 		strategies = append(strategies, randStrategy)
 	}
-	if em.fcIndexer != nil {
-		quorumStrategy := em.fcIndexer.SearchStrategy()
+	if em.srIndexer != nil {
+		quorumStrategy := em.srIndexer.SearchStrategy()
 		for consensus.Seq(len(strategies)) < maxParents {
 			strategies = append(strategies, quorumStrategy)
 		}
