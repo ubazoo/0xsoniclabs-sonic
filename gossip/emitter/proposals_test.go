@@ -11,7 +11,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter/state"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
@@ -177,10 +176,10 @@ func TestCreatePayload_InvalidTurn_CreatesEmptyPayload(t *testing.T) {
 		world, nil, 0, event, nil, nil,
 	)
 
-	var a, b proposalState
-	a.fromPayload(payloads[p1])
-	b.fromPayload(payloads[p2])
-	want := joinProposalState(a, b).toPayload()
+	var a, b inter.ProposalSyncState
+	a.FromPayload(payloads[p1])
+	b.FromPayload(payloads[p2])
+	want := inter.JoinProposalState(a, b).ToPayload()
 
 	require.NoError(err)
 	require.Equal(want, payload)
@@ -324,255 +323,6 @@ func TestWorldReaderAdapter_ForwardsCallsToWrappedWorld(t *testing.T) {
 	})
 }
 
-func TestProposalState_FromPayload(t *testing.T) {
-	for turn := range inter.Turn(10) {
-		for frame := range idx.Frame(10) {
-			for block := range idx.Block(10) {
-				state := proposalState{}
-				state.fromPayload(inter.Payload{
-					LastSeenProposalTurn:  turn,
-					LastSeenProposalFrame: frame,
-					LastSeenProposedBlock: block,
-				})
-				require.Equal(t, turn, state.lastSeenProposalTurn)
-				require.Equal(t, frame, state.lastSeenProposalFrame)
-				require.Equal(t, block, state.lastSeenProposedBlock)
-			}
-		}
-	}
-}
-
-func TestProposalState_ToPayload(t *testing.T) {
-	for turn := range inter.Turn(10) {
-		for frame := range idx.Frame(10) {
-			for block := range idx.Block(10) {
-				payload := proposalState{
-					lastSeenProposalTurn:  turn,
-					lastSeenProposalFrame: frame,
-					lastSeenProposedBlock: block,
-				}.toPayload()
-				require.Equal(t, turn, payload.LastSeenProposalTurn)
-				require.Equal(t, frame, payload.LastSeenProposalFrame)
-				require.Equal(t, block, payload.LastSeenProposedBlock)
-			}
-		}
-	}
-}
-
-func TestProposalState_Join(t *testing.T) {
-	for turnA := range inter.Turn(5) {
-		for turnB := range inter.Turn(5) {
-			for frameA := range idx.Frame(5) {
-				for frameB := range idx.Frame(5) {
-					for blockA := range idx.Block(5) {
-						for blockB := range idx.Block(5) {
-							a := proposalState{
-								lastSeenProposalTurn:  turnA,
-								lastSeenProposalFrame: frameA,
-								lastSeenProposedBlock: blockA,
-							}
-							b := proposalState{
-								lastSeenProposalTurn:  turnB,
-								lastSeenProposalFrame: frameB,
-								lastSeenProposedBlock: blockB,
-							}
-							joined := joinProposalState(a, b)
-							require.Equal(t, max(turnA, turnB), joined.lastSeenProposalTurn)
-							require.Equal(t, max(frameA, frameB), joined.lastSeenProposalFrame)
-							require.Equal(t, max(blockA, blockB), joined.lastSeenProposedBlock)
-						}
-					}
-				}
-			}
-		}
-	}
-}
-
-func TestGetIncomingProposalState_ProducesEpochStartStateForGenesisEvent(t *testing.T) {
-	require := require.New(t)
-	ctrl := gomock.NewController(t)
-	world := NewMockeventReader(ctrl)
-
-	event := &inter.MutableEventPayload{}
-	event.SetEpoch(42)
-	require.Empty(event.Parents())
-
-	epochStartBlock := idx.Block(123)
-	world.EXPECT().GetEpochStartBlock(event.Epoch()).Return(epochStartBlock)
-
-	state := getIncomingProposalState(world, event)
-	require.Equal(inter.Turn(0), state.lastSeenProposalTurn)
-	require.Equal(idx.Frame(0), state.lastSeenProposalFrame)
-	require.Equal(epochStartBlock, state.lastSeenProposedBlock)
-}
-
-func TestGetIncomingProposalState_AggregatesParentStates(t *testing.T) {
-	require := require.New(t)
-	ctrl := gomock.NewController(t)
-	world := NewMockeventReader(ctrl)
-
-	p1 := hash.Event{1}
-	p2 := hash.Event{2}
-	p3 := hash.Event{3}
-	parents := map[hash.Event]inter.Payload{
-		p1: inter.Payload{
-			LastSeenProposalTurn:  inter.Turn(0x01),
-			LastSeenProposalFrame: idx.Frame(0x12),
-			LastSeenProposedBlock: idx.Block(0x23),
-		},
-		p2: inter.Payload{
-			LastSeenProposalTurn:  inter.Turn(0x03),
-			LastSeenProposalFrame: idx.Frame(0x11),
-			LastSeenProposedBlock: idx.Block(0x22),
-		},
-		p3: inter.Payload{
-			LastSeenProposalTurn:  inter.Turn(0x02),
-			LastSeenProposalFrame: idx.Frame(0x13),
-			LastSeenProposedBlock: idx.Block(0x21),
-		},
-	}
-
-	world.EXPECT().GetEventPayload(p1).Return(parents[p1])
-	world.EXPECT().GetEventPayload(p2).Return(parents[p2])
-	world.EXPECT().GetEventPayload(p3).Return(parents[p3])
-
-	event := &dag.MutableBaseEvent{}
-	event.SetParents(hash.Events{p1, p2, p3})
-	state := getIncomingProposalState(world, event)
-
-	require.Equal(inter.Turn(0x03), state.lastSeenProposalTurn)
-	require.Equal(idx.Frame(0x13), state.lastSeenProposalFrame)
-	require.Equal(idx.Block(0x23), state.lastSeenProposedBlock)
-}
-
-func TestIsAllowedToPropose_AcceptsValidProposerTurn(t *testing.T) {
-	require := require.New(t)
-
-	thisValidator := idx.ValidatorID(1)
-	builder := pos.ValidatorsBuilder{}
-	builder.Set(thisValidator, 10)
-	validators := builder.Build()
-
-	last := inter.ProposalSummary{
-		Turn:  inter.Turn(5),
-		Frame: idx.Frame(12),
-	}
-	next := inter.ProposalSummary{
-		Turn:  inter.Turn(6),
-		Frame: idx.Frame(17),
-	}
-	require.True(inter.IsValidTurnProgression(last, next))
-
-	ok, err := isAllowedToPropose(
-		proposalState{
-			lastSeenProposalTurn:  last.Turn,
-			lastSeenProposalFrame: last.Frame,
-			lastSeenProposedBlock: idx.Block(4),
-		},
-		next.Frame,
-		validators,
-		thisValidator,
-		5, // block to be proposed
-	)
-	require.NoError(err)
-	require.True(ok)
-}
-
-func TestIsAllowedToPropose_RejectsInvalidProposerTurn(t *testing.T) {
-	validatorA := idx.ValidatorID(1)
-	validatorB := idx.ValidatorID(2)
-	builder := pos.ValidatorsBuilder{}
-	builder.Set(validatorA, 10)
-	builder.Set(validatorB, 20)
-	validators := builder.Build()
-
-	validTurn := inter.Turn(5)
-	validProposer, err := inter.GetProposer(validators, validTurn)
-	require.NoError(t, err)
-	invalidProposer := validatorA
-	if invalidProposer == validProposer {
-		invalidProposer = validatorB
-	}
-
-	type input struct {
-		thisValidator     idx.ValidatorID
-		blockToBeProposed idx.Block
-		currentFrame      idx.Frame
-	}
-
-	tests := map[string]func(*input){
-		"wrong proposer": func(input *input) {
-			input.thisValidator = invalidProposer
-		},
-		"proposed block is too old": func(input *input) {
-			input.blockToBeProposed = input.blockToBeProposed - 1
-		},
-		"proposed block is too new": func(input *input) {
-			input.blockToBeProposed = input.blockToBeProposed + 1
-		},
-		"invalid turn progression": func(input *input) {
-			// a proposal made too late needs to be rejected
-			input.currentFrame = input.currentFrame * 10
-		},
-	}
-
-	for name, corrupt := range tests {
-		t.Run(name, func(t *testing.T) {
-			require := require.New(t)
-
-			proposalState := proposalState{
-				lastSeenProposalTurn:  12,
-				lastSeenProposalFrame: 62,
-				lastSeenProposedBlock: 5,
-			}
-
-			input := input{
-				currentFrame:      67,
-				thisValidator:     validProposer,
-				blockToBeProposed: 6,
-			}
-
-			ok, err := isAllowedToPropose(
-				proposalState,
-				input.currentFrame,
-				validators,
-				input.thisValidator,
-				input.blockToBeProposed,
-			)
-			require.NoError(err)
-			require.True(ok)
-
-			corrupt(&input)
-			ok, err = isAllowedToPropose(
-				proposalState,
-				input.currentFrame,
-				validators,
-				input.thisValidator,
-				input.blockToBeProposed,
-			)
-			require.NoError(err)
-			require.False(ok)
-		})
-	}
-}
-
-func TestIsAllowedToPropose_ForwardsTurnSelectionError(t *testing.T) {
-	validators := pos.ValidatorsBuilder{}.Build()
-
-	_, want := inter.GetProposer(validators, inter.Turn(0))
-	require.Error(t, want)
-
-	_, got := isAllowedToPropose(
-		proposalState{},
-		idx.Frame(0),
-		validators,
-		idx.ValidatorID(0),
-		idx.Block(1),
-	)
-	require.Error(t, got)
-	require.Equal(t, got, want)
-}
-
 func TestCreateProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	require := require.New(t)
 	ctrl := gomock.NewController(t)
@@ -581,10 +331,10 @@ func TestCreateProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	timeoutMetric := NewMockcounterMetric(ctrl)
 
 	rules := opera.Rules{}
-	state := proposalState{
-		lastSeenProposalTurn:  inter.Turn(5),
-		lastSeenProposalFrame: idx.Frame(12),
-		lastSeenProposedBlock: idx.Block(4),
+	state := inter.ProposalSyncState{
+		LastSeenProposalTurn:  inter.Turn(5),
+		LastSeenProposalFrame: idx.Frame(12),
+		LastSeenProposedBlock: idx.Block(4),
 	}
 	latestBlock := inter.NewBlockBuilder().
 		WithNumber(5).
@@ -635,7 +385,7 @@ func TestCreateProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 	)
 
 	require.NoError(err)
-	require.Equal(state.lastSeenProposalTurn+1, payload.LastSeenProposalTurn)
+	require.Equal(state.LastSeenProposalTurn+1, payload.LastSeenProposalTurn)
 	require.Equal(idx.Block(latestBlock.Number)+1, payload.LastSeenProposedBlock)
 	require.Equal(currentFrame, payload.LastSeenProposalFrame)
 
@@ -649,10 +399,10 @@ func TestCreateProposal_ValidArguments_CreatesValidProposal(t *testing.T) {
 }
 
 func TestCreateProposal_InvalidBlockTime_ReturnsAnEmptyProposal(t *testing.T) {
-	state := proposalState{
-		lastSeenProposalTurn:  inter.Turn(5),
-		lastSeenProposalFrame: idx.Frame(12),
-		lastSeenProposedBlock: idx.Block(4),
+	state := inter.ProposalSyncState{
+		LastSeenProposalTurn:  inter.Turn(5),
+		LastSeenProposalFrame: idx.Frame(12),
+		LastSeenProposedBlock: idx.Block(4),
 	}
 	latestBlock := inter.NewBlockBuilder().WithTime(1234).Build()
 	for _, delta := range []time.Duration{-1 * time.Nanosecond, 0} {
@@ -661,7 +411,7 @@ func TestCreateProposal_InvalidBlockTime_ReturnsAnEmptyProposal(t *testing.T) {
 			opera.Rules{}, state, latestBlock, newTime, 0, nil, nil, nil, nil,
 		)
 		require.NoError(t, err)
-		require.Equal(t, state.toPayload(), payload)
+		require.Equal(t, state.ToPayload(), payload)
 	}
 }
 
@@ -696,7 +446,7 @@ func TestCreateProposal_IfSchedulerTimesOut_SignalTimeoutToMonitor(t *testing.T)
 
 	_, err := createProposal(
 		opera.Rules{},
-		proposalState{},
+		inter.ProposalSyncState{},
 		inter.NewBlockBuilder().Build(),
 		inter.Timestamp(1),
 		0,

@@ -9,7 +9,6 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/Fantom-foundation/lachesis-base/hash"
-	"github.com/Fantom-foundation/lachesis-base/inter/dag"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/inter/pos"
 	"github.com/ethereum/go-ethereum/common"
@@ -63,13 +62,13 @@ func createPayload(
 ) (inter.Payload, error) {
 
 	// Get the last seen proposal information from the event's parents.
-	incomingState := getIncomingProposalState(world, event)
+	incomingState := inter.GetIncomingProposalState(world, event)
 
 	// Determine whether this validator is allowed to propose a new block.
 	currentFrame := event.Frame()
 	latest := world.GetLatestBlock()
 	nextBlock := idx.Block(latest.Number + 1)
-	isMyTurn, err := isAllowedToPropose(
+	isMyTurn, err := inter.IsAllowedToPropose(
 		incomingState,
 		currentFrame,
 		validators,
@@ -80,7 +79,7 @@ func createPayload(
 		return inter.Payload{}, err
 	}
 	if !isMyTurn {
-		return incomingState.toPayload(), nil
+		return incomingState.ToPayload(), nil
 	}
 
 	// Make a new proposal. For the time of the block we use the median time,
@@ -102,7 +101,7 @@ func createPayload(
 // worldReader is an interface for a data source providing all the information
 // about the current chain state required for creating a new block proposal.
 type worldReader interface {
-	eventReader
+	inter.EventReader
 	GetLatestBlock() *inter.Block
 	GetRules() opera.Rules
 }
@@ -127,123 +126,13 @@ func (w worldReaderAdapter) GetRules() opera.Rules {
 	return w.world.GetRules()
 }
 
-// --- proposal state ---
-
-// proposalState is a structure holding a summary of the state tracked by events
-// on the DAG to facilitate the proposal selection.
-type proposalState struct {
-	lastSeenProposalTurn  inter.Turn
-	lastSeenProposalFrame idx.Frame
-	lastSeenProposedBlock idx.Block
-}
-
-func (s *proposalState) fromPayload(payload inter.Payload) {
-	s.lastSeenProposalTurn = payload.LastSeenProposalTurn
-	s.lastSeenProposedBlock = payload.LastSeenProposedBlock
-	s.lastSeenProposalFrame = payload.LastSeenProposalFrame
-}
-
-func (s proposalState) toPayload() inter.Payload {
-	return inter.Payload{
-		LastSeenProposalTurn:  s.lastSeenProposalTurn,
-		LastSeenProposedBlock: s.lastSeenProposedBlock,
-		LastSeenProposalFrame: s.lastSeenProposalFrame,
-	}
-}
-
-// joinProposalState merges two proposal states by taking the maximum of each
-// field. This is used to aggregate the proposal state from an event's parents.
-func joinProposalState(a, b proposalState) proposalState {
-	return proposalState{
-		lastSeenProposalTurn:  max(a.lastSeenProposalTurn, b.lastSeenProposalTurn),
-		lastSeenProposedBlock: max(a.lastSeenProposedBlock, b.lastSeenProposedBlock),
-		lastSeenProposalFrame: max(a.lastSeenProposalFrame, b.lastSeenProposalFrame),
-	}
-}
-
-// getIncomingProposalState aggregates the last seen proposal information
-// from the event's parents.
-func getIncomingProposalState(
-	reader eventReader,
-	event dag.Event,
-) proposalState {
-	res := proposalState{}
-	parents := event.Parents()
-
-	// For genesis events without errors, there is no last seen proposal.
-	// However, we need to set the last seen proposed block to the start block
-	// of the epoch to retain progress.
-	if len(parents) == 0 {
-		res.lastSeenProposedBlock = reader.GetEpochStartBlock(event.Epoch())
-		return res
-	}
-
-	// For all other events, the last seen proposal information of the parents
-	// needs to be aggregated.
-	for _, parent := range parents {
-		current := proposalState{}
-		current.fromPayload(reader.GetEventPayload(parent))
-		res = joinProposalState(res, current)
-	}
-	return res
-}
-
-type eventReader interface {
-	GetEpochStartBlock(idx.Epoch) idx.Block
-	GetEventPayload(hash.Event) inter.Payload
-}
-
-// --- determination of the proposal turn ---
-
-// isAllowedToPropose checks whether the current validator is allowed to
-// propose a new block.
-func isAllowedToPropose(
-	proposalState proposalState,
-	currentFrame idx.Frame,
-	validators *pos.Validators,
-	thisValidator idx.ValidatorID,
-	blockToPropose idx.Block,
-) (bool, error) {
-	// Check that the block about to be proposed is the next expected block.
-	// TODO: show that this throttling mechanism is safe
-	// see https://github.com/0xsoniclabs/sonic-admin/issues/182
-	if proposalState.lastSeenProposedBlock+1 != blockToPropose {
-		return false, nil
-	}
-
-	// Check whether it is this emitter's turn to propose a new block.
-	nextTurn := proposalState.lastSeenProposalTurn + 1
-	proposer, err := inter.GetProposer(validators, nextTurn)
-	if err != nil || proposer != thisValidator {
-		return false, err
-	}
-
-	// Check that enough time has passed for the next proposal.
-	valid := inter.IsValidTurnProgression(
-		inter.ProposalSummary{
-			Turn:  proposalState.lastSeenProposalTurn,
-			Frame: proposalState.lastSeenProposalFrame,
-		},
-		inter.ProposalSummary{
-			Turn:  nextTurn,
-			Frame: currentFrame,
-		},
-	)
-	if !valid {
-		return false, nil
-	}
-
-	// It is indeed this validator's turn to propose a new block.
-	return true, nil
-}
-
 // --- proposal creation ---
 
 // createProposal creates a new block proposal based on the given context
 // information. The resulting payload contains the new block proposal.
 func createProposal(
 	rules opera.Rules,
-	proposalState proposalState,
+	proposalState inter.ProposalSyncState,
 	latestBlock *inter.Block,
 	newBlockTime inter.Timestamp,
 	currentFrame idx.Frame,
@@ -257,7 +146,7 @@ func createProposal(
 	lastBlockTime := latestBlock.Time
 	if lastBlockTime >= newBlockTime {
 		// no time has passed, so no new proposal can be made
-		return proposalState.toPayload(), nil
+		return proposalState.ToPayload(), nil
 	}
 	effectiveGasLimit := getEffectiveGasLimit(
 		newBlockTime.Time().Sub(lastBlockTime.Time()),
@@ -302,7 +191,7 @@ func createProposal(
 
 	// Produce updated payload with the new proposal.
 	return inter.Payload{
-		LastSeenProposalTurn:  proposalState.lastSeenProposalTurn + 1,
+		LastSeenProposalTurn:  proposalState.LastSeenProposalTurn + 1,
 		LastSeenProposedBlock: proposal.Number,
 		LastSeenProposalFrame: currentFrame,
 		Proposal:              proposal,

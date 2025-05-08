@@ -104,57 +104,6 @@ func (mr *MockworldReaderMockRecorder) GetRules() *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRules", reflect.TypeOf((*MockworldReader)(nil).GetRules))
 }
 
-// MockeventReader is a mock of eventReader interface.
-type MockeventReader struct {
-	ctrl     *gomock.Controller
-	recorder *MockeventReaderMockRecorder
-}
-
-// MockeventReaderMockRecorder is the mock recorder for MockeventReader.
-type MockeventReaderMockRecorder struct {
-	mock *MockeventReader
-}
-
-// NewMockeventReader creates a new mock instance.
-func NewMockeventReader(ctrl *gomock.Controller) *MockeventReader {
-	mock := &MockeventReader{ctrl: ctrl}
-	mock.recorder = &MockeventReaderMockRecorder{mock}
-	return mock
-}
-
-// EXPECT returns an object that allows the caller to indicate expected use.
-func (m *MockeventReader) EXPECT() *MockeventReaderMockRecorder {
-	return m.recorder
-}
-
-// GetEpochStartBlock mocks base method.
-func (m *MockeventReader) GetEpochStartBlock(arg0 idx.Epoch) idx.Block {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEpochStartBlock", arg0)
-	ret0, _ := ret[0].(idx.Block)
-	return ret0
-}
-
-// GetEpochStartBlock indicates an expected call of GetEpochStartBlock.
-func (mr *MockeventReaderMockRecorder) GetEpochStartBlock(arg0 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEpochStartBlock", reflect.TypeOf((*MockeventReader)(nil).GetEpochStartBlock), arg0)
-}
-
-// GetEventPayload mocks base method.
-func (m *MockeventReader) GetEventPayload(arg0 hash.Event) inter.Payload {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEventPayload", arg0)
-	ret0, _ := ret[0].(inter.Payload)
-	return ret0
-}
-
-// GetEventPayload indicates an expected call of GetEventPayload.
-func (mr *MockeventReaderMockRecorder) GetEventPayload(arg0 any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEventPayload", reflect.TypeOf((*MockeventReader)(nil).GetEventPayload), arg0)
-}
-
 // MocktxScheduler is a mock of txScheduler interface.
 type MocktxScheduler struct {
 	ctrl     *gomock.Controller
