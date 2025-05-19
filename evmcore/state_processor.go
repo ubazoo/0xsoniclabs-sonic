@@ -71,9 +71,8 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
 ) (
-	receipts types.Receipts, allLogs []*types.Log, skipped []uint32, err error,
+	types.Receipts, []*types.Log, []uint32, error,
 ) {
-	skipped = make([]uint32, 0, len(block.Transactions))
 	var (
 		gp           = new(core.GasPool).AddGas(block.GasLimit)
 		receipt      *types.Receipt
@@ -91,6 +90,10 @@ func (p *StateProcessor) Process(
 		ProcessParentBlockHash(block.ParentHash, vmenv)
 	}
 
+	receipts := make(types.Receipts, 0, len(block.Transactions))
+	allLogs := make([]*types.Log, 0, len(block.Transactions))
+	skipped := make([]uint32, 0, len(block.Transactions))
+
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions {
 		msg, err := TxAsMessage(tx, signer, header.BaseFee)
@@ -103,7 +106,6 @@ func (p *StateProcessor) Process(
 		if skip {
 			skipped = append(skipped, uint32(i))
 			receipts = append(receipts, nil)
-			err = nil
 			continue
 		}
 		if err != nil {
@@ -112,7 +114,7 @@ func (p *StateProcessor) Process(
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
 	}
-	return
+	return receipts, allLogs, skipped, nil
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
