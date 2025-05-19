@@ -20,10 +20,14 @@ const (
 // defining new RLP encoded content, this payload uses protobuf encoding to
 // standardize the serialization of the content and simplify portability.
 type Payload struct {
-	LastSeenProposalTurn  Turn
-	LastSeenProposedBlock idx.Block
-	LastSeenProposalFrame idx.Frame
-	Proposal              *Proposal
+	// ProposalSyncState keeps track of the turn-taking of proposers and enables
+	// the decision of whose turn it is to propose a block. This information is
+	// present in all events.
+	ProposalSyncState
+	// Proposal is an optional proposal for a new block that can be included in
+	// the payload of an event only by a producer who is allowed to do so based
+	// on the tracked sync state.
+	Proposal *Proposal
 }
 
 // Hash computes a secure hash of the payload that can be used for signing and
