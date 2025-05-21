@@ -13,10 +13,10 @@ import (
 
 var once sync.Once
 
-func SetDataDir(ctx context.Context, datadir string) {
+func SetDataDir(datadir string) {
 	once.Do(func() {
-		go measureDbDir(ctx, "db_size", datadir)
-		go measureDbDir(ctx, "statedb/disksize", filepath.Join(datadir, "carmen"))
+		go measureDbDir(context.Background(), "db_size", datadir)
+		go measureDbDir(context.Background(), "statedb/disksize", filepath.Join(datadir, "carmen"))
 	})
 }
 

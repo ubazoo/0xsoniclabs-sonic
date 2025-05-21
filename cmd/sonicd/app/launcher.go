@@ -1,7 +1,6 @@
 package app
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -243,7 +242,7 @@ func lachesisMainInternal(
 		return err
 	}
 
-	metrics.SetDataDir(context.Background(), cfg.Node.DataDir) // report disk space usage into metrics
+	metrics.SetDataDir(cfg.Node.DataDir) // report disk space usage into metrics
 	liveCache := ctx.GlobalInt64(flags.LiveDbCacheFlag.Name)
 	if liveCache > 0 {
 		cfg.OperaStore.EVM.StateDb.LiveCache = liveCache

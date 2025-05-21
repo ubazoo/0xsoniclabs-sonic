@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -70,73 +71,14 @@ func TestMeasureDbDir_LoopCanBeCancelled(t *testing.T) {
 	}
 }
 
-func TestSetDataDir_TracksExpectedDir(t *testing.T) {
-	// create a temporary directory for testing
-	tempDir := t.TempDir()
-
-	gaugeName := "db_size"
-	carmenGaugeName := "statedb/disksize"
-	initialDbGaugeValue := metrics.GetOrRegisterGauge(gaugeName, nil).Snapshot().Value()
-	initialCarmenGaugeValue := metrics.GetOrRegisterGauge(carmenGaugeName, nil).Snapshot().Value()
-
-	// create some data to write to the test files
-	testData := []byte("test data")
-	lenTestData := int64(len(testData))
-
-	// create test files in the temporary directory
-	f := createTestFile(t, tempDir, "file1")
-	defer f.Close()
-	writeTestData(t, f, testData)
-
-	f2 := createTestFile(t, tempDir, "carmen")
-	defer f2.Close()
-	writeTestData(t, f2, testData)
-
-	// synctest contexts creates a "bubble" of goroutines that run with a fake
-	// clock allowing fast execution of time-based tests.
-	synctest.Run(func() {
-		ctx, cancel := context.WithCancel(t.Context())
-		SetDataDir(ctx, tempDir)
-
-		// give enough time for one measurement to be taken
-		time.Sleep(time.Minute + time.Millisecond)
-		cancel()
-
-		// verify the gauge value matches the total size of the file
-		// db_size counts the size of all files in the directory
-		snapshotValueEquals(t, gaugeName, initialDbGaugeValue+lenTestData*2)
-		// statedb/disksize counts the size of the carmen file
-		snapshotValueEquals(t, carmenGaugeName, initialCarmenGaugeValue+lenTestData)
-	})
-}
-
-func TestSetDataDir_StopsTrackingWhenCancelled(t *testing.T) {
-	// create a temporary directory for testing
-	tempDir := t.TempDir()
-
-	// create some data to write to the test file
-	testData := []byte("test data")
-
-	// create a test file in the temporary directory
-	f := createTestFile(t, tempDir, "file42")
-	defer f.Close()
-
-	gaugeName := "db_size"
-	initialDbGaugeValue := metrics.GetOrRegisterGauge(gaugeName, nil).Snapshot().Value()
-
-	synctest.Run(func() {
-		ctx, cancel := context.WithCancel(t.Context())
-		SetDataDir(ctx, tempDir)
-		// force cancel of context right after measureDbDir starts
-		cancel()
-		// give enough time for the cancel to be processed
-		time.Sleep(time.Minute + time.Millisecond)
-
-		writeTestData(t, f, testData)
-		// Since data was written after the cancel, the gauge should not
-		// reflect the new size
-		snapshotValueEquals(t, gaugeName, initialDbGaugeValue)
-	})
+func TestSetDataDir_StartsBackgroundProcessesOnlyOnce(t *testing.T) {
+	before := runtime.NumGoroutine()
+	SetDataDir(t.TempDir())
+	SetDataDir(t.TempDir())
+	after := runtime.NumGoroutine()
+	if after-before != 2 {
+		t.Fatalf("expected 2 goroutines to be started, got %d", after-before)
+	}
 }
 
 // createTestFile is a helper functions that creates a file. It should be closed
