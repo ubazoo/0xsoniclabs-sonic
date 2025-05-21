@@ -74,6 +74,11 @@ func TestSetDataDir_TracksExpectedDir(t *testing.T) {
 	// create a temporary directory for testing
 	tempDir := t.TempDir()
 
+	gaugeName := "db_size"
+	carmenGaugeName := "statedb/disksize"
+	initialDbGaugeValue := metrics.GetOrRegisterGauge(gaugeName, nil).Snapshot().Value()
+	initialCarmenGaugeValue := metrics.GetOrRegisterGauge(carmenGaugeName, nil).Snapshot().Value()
+
 	// create some data to write to the test files
 	testData := []byte("test data")
 	lenTestData := int64(len(testData))
@@ -87,9 +92,6 @@ func TestSetDataDir_TracksExpectedDir(t *testing.T) {
 	defer f2.Close()
 	writeTestData(t, f2, testData)
 
-	gaugeName := "db_size"
-	carmenGaugeName := "statedb/disksize"
-
 	// synctest contexts creates a "bubble" of goroutines that run with a fake
 	// clock allowing fast execution of time-based tests.
 	synctest.Run(func() {
@@ -102,9 +104,9 @@ func TestSetDataDir_TracksExpectedDir(t *testing.T) {
 
 		// verify the gauge value matches the total size of the file
 		// db_size counts the size of all files in the directory
-		snapshotValueEquals(t, gaugeName, lenTestData*2)
+		snapshotValueEquals(t, gaugeName, initialDbGaugeValue+lenTestData*2)
 		// statedb/disksize counts the size of the carmen file
-		snapshotValueEquals(t, carmenGaugeName, lenTestData)
+		snapshotValueEquals(t, carmenGaugeName, initialCarmenGaugeValue+lenTestData)
 	})
 }
 
@@ -116,10 +118,11 @@ func TestSetDataDir_StopsTrackingWhenCancelled(t *testing.T) {
 	testData := []byte("test data")
 
 	// create a test file in the temporary directory
-	f := createTestFile(t, tempDir, "file1")
+	f := createTestFile(t, tempDir, "file42")
 	defer f.Close()
 
 	gaugeName := "db_size"
+	initialDbGaugeValue := metrics.GetOrRegisterGauge(gaugeName, nil).Snapshot().Value()
 
 	synctest.Run(func() {
 		ctx, cancel := context.WithCancel(t.Context())
@@ -132,7 +135,7 @@ func TestSetDataDir_StopsTrackingWhenCancelled(t *testing.T) {
 		writeTestData(t, f, testData)
 		// Since data was written after the cancel, the gauge should not
 		// reflect the new size
-		snapshotValueEquals(t, gaugeName, int64(0))
+		snapshotValueEquals(t, gaugeName, initialDbGaugeValue)
 	})
 }
 
