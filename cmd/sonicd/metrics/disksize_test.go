@@ -15,36 +15,36 @@ import (
 )
 
 func TestMeasureDbDir_LogsDBDirSizeEveryMinute(t *testing.T) {
-	// Create a temporary directory for testing
+	// create a temporary directory for testing
 	tempDir := t.TempDir()
 
-	// Create some data to write to the test file
+	// create some data to write to the test file
 	testData := []byte("test data")
 	lenTestData := len(testData)
 
-	// Create a test file in the temporary directory
+	// create a test file in the temporary directory
 	f := createTestFile(t, tempDir, "file1")
 
 	gaugeName := "testGauge"
 
-	// synctest contexts creates a bubble of goroutines that run in a "bubble"
-	// with a fake clock allowing fast execution of time-based tests.
+	// synctest contexts creates a "bubble" of goroutines that run with a fake
+	// clock allowing fast execution of time-based tests.
 	synctest.Run(func() {
 
 		ctx, cancel := context.WithCancel(t.Context())
+		// run measureDbDir in a goroutine
 		go measureDbDir(ctx, gaugeName, tempDir)
 
 		for i := range 5 {
 			writeTestData(t, f, testData)
 
-			// Run measureDbDir in a goroutine and stop it after a short duration
 			// disk gets measured once per minute, so we have to wait for that
 			time.Sleep(time.Minute + time.Millisecond)
 
-			// Verify the gauge value matches the total size of the file
-			expectedSize := int64(lenTestData * (i + 1))
-			snapshotValueEquals(t, gaugeName, expectedSize)
+			// verify the gauge value matches the total size of the file
+			snapshotValueEquals(t, gaugeName, int64(lenTestData*(i+1)))
 		}
+		// we need to cancel the context to stop measureDbDir
 		cancel()
 	})
 }
@@ -71,14 +71,14 @@ func TestMeasureDbDir_LoopCanBeCancelled(t *testing.T) {
 }
 
 func TestSetDataDir_TracksExpectedDir(t *testing.T) {
-	// Create a temporary directory for testing
+	// create a temporary directory for testing
 	tempDir := t.TempDir()
 
-	// Create some data to write to the test file
+	// create some data to write to the test files
 	testData := []byte("test data")
-	lenTestData := len(testData)
+	lenTestData := int64(len(testData))
 
-	// Create a test file in the temporary directory
+	// create test files in the temporary directory
 	f := createTestFile(t, tempDir, "file1")
 	defer f.Close()
 	writeTestData(t, f, testData)
@@ -90,33 +90,32 @@ func TestSetDataDir_TracksExpectedDir(t *testing.T) {
 	gaugeName := "db_size"
 	carmenGaugeName := "statedb/disksize"
 
-	// synctest contexts creates a bubble of goroutines that run in a "bubble"
-	// with a fake clock allowing fast execution of time-based tests.
+	// synctest contexts creates a "bubble" of goroutines that run with a fake
+	// clock allowing fast execution of time-based tests.
 	synctest.Run(func() {
 		ctx, cancel := context.WithCancel(t.Context())
 		SetDataDir(ctx, tempDir)
 
+		// give enough time for one measurement to be taken
 		time.Sleep(time.Minute + time.Millisecond)
 		cancel()
 
-		// Verify the gauge value matches the total size of the file
-		expectedSize := int64(lenTestData)
+		// verify the gauge value matches the total size of the file
 		// db_size counts the size of all files in the directory
-		snapshotValueEquals(t, gaugeName, expectedSize*2)
-
+		snapshotValueEquals(t, gaugeName, lenTestData*2)
 		// statedb/disksize counts the size of the carmen file
-		snapshotValueEquals(t, carmenGaugeName, expectedSize)
+		snapshotValueEquals(t, carmenGaugeName, lenTestData)
 	})
 }
 
 func TestSetDataDir_StopsTrackingWhenCancelled(t *testing.T) {
-	// Create a temporary directory for testing
+	// create a temporary directory for testing
 	tempDir := t.TempDir()
 
-	// Create some data to write to the test file
+	// create some data to write to the test file
 	testData := []byte("test data")
 
-	// Create a test file in the temporary directory
+	// create a test file in the temporary directory
 	f := createTestFile(t, tempDir, "file1")
 	defer f.Close()
 
@@ -125,9 +124,11 @@ func TestSetDataDir_StopsTrackingWhenCancelled(t *testing.T) {
 	synctest.Run(func() {
 		ctx, cancel := context.WithCancel(t.Context())
 		SetDataDir(ctx, tempDir)
+		// force cancel of context right after measureDbDir starts
 		cancel()
-
+		// give enough time for the cancel to be processed
 		time.Sleep(time.Minute + time.Millisecond)
+
 		writeTestData(t, f, testData)
 		// Since data was written after the cancel, the gauge should not
 		// reflect the new size
