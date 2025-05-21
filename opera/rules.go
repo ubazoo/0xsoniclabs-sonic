@@ -82,7 +82,11 @@ type RulesRLP struct {
 	// Economy options
 	Economy EconomyRules
 
+	// Hard-Fork flags
 	Upgrades Upgrades `rlp:"-"`
+
+	// Feature flags
+	Features FeatureSet `rlp:"-"`
 }
 
 // Rules describes opera net.
@@ -431,6 +435,7 @@ func (r Rules) Copy() Rules {
 		cp.Economy.MinBaseFee = new(big.Int).Set(r.Economy.MinBaseFee)
 	}
 
+	cp.Features = cp.Features.Clone()
 	return cp
 }
 

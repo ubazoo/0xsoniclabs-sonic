@@ -20,6 +20,9 @@ func (r Rules) EncodeRLP(w io.Writer) error {
 	rType := uint8(0)
 	if r.Upgrades != (Upgrades{}) {
 		rType = 1
+		if !r.Features.IsEmpty() {
+			rType = 2
+		}
 		_, err := w.Write([]byte{rType})
 		if err != nil {
 			return err
@@ -34,6 +37,12 @@ func (r Rules) EncodeRLP(w io.Writer) error {
 	// write additional fields, depending on the type
 	if rType > 0 {
 		err := rlp.Encode(w, &r.Upgrades)
+		if err != nil {
+			return err
+		}
+	}
+	if rType > 1 {
+		err := rlp.Encode(w, &r.Features)
 		if err != nil {
 			return err
 		}
@@ -58,7 +67,7 @@ func (r *Rules) DecodeRLP(s *rlp.Stream) error {
 			return errors.New("empty typed")
 		}
 		rType = b[0]
-		if rType == 0 || rType > 1 {
+		if rType == 0 || rType > 2 {
 			return errors.New("unknown type")
 		}
 	}
@@ -72,6 +81,12 @@ func (r *Rules) DecodeRLP(s *rlp.Stream) error {
 	// decode additional fields, depending on the type
 	if rType >= 1 {
 		err = s.Decode(&r.Upgrades)
+		if err != nil {
+			return err
+		}
+	}
+	if rType >= 2 {
+		err = s.Decode(&r.Features)
 		if err != nil {
 			return err
 		}

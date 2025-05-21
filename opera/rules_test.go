@@ -164,12 +164,18 @@ func TestRules_Copy_CopiesAreDisjoint(t *testing.T) {
 				rule.Upgrades.Allegro = !rule.Upgrades.Allegro
 			},
 		},
+		"update Features": {
+			update: func(rule *Rules) {
+				rule.Features.Enable(Feature(2))
+			},
+		},
 	}
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
 			// Create a deep copy of the original rules
 			original := FakeNetRules(Allegro)
+			original.Features.Enable(Feature(1))
 			copied := original.Copy()
 
 			// Apply the update to the copied rules
