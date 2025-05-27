@@ -1,6 +1,8 @@
 package gossip
 
 import (
+	"bytes"
+	"cmp"
 	"fmt"
 	"math/big"
 	"sort"
@@ -8,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/scc/cert"
 	scc_node "github.com/0xsoniclabs/sonic/scc/node"
 	"github.com/0xsoniclabs/sonic/utils/signers/gsignercache"
@@ -135,7 +138,7 @@ func consensusCallbackBeginBlockFn(
 					atroposTime = e.MedianTime()
 					atroposDegenerate = false
 				}
-				if e.AnyTxs() {
+				if e.AnyTxs() || e.HasProposal() {
 					confirmedEvents = append(confirmedEvents, e.ID())
 				}
 				eventProcessor.ProcessConfirmedEvent(e)
@@ -227,17 +230,53 @@ func consensusCallbackBeginBlockFn(
 
 				// At this point, newValidators may be returned and the rest of the code may be executed in a parallel thread
 				blockFn := func() {
+					// sort events by Lamport time
+					sort.Sort(confirmedEvents)
+					maxBlockGas := es.Rules.Blocks.MaxBlockGas
+					blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
 
 					// Start assembling the resulting block.
 					number := uint64(blockCtx.Idx)
 					lastBlockHeader := evmStateReader.GetHeaderByNumber(number - 1)
-					maxBlockGas := es.Rules.Blocks.MaxBlockGas
-					blockDuration := time.Duration(blockCtx.Time - bs.LastBlock.Time)
+
+					// Get a proposal for the block to be created.
+					proposal := inter.Proposal{
+						Number:     blockCtx.Idx,
+						ParentHash: lastBlockHeader.Hash,
+						Time:       blockCtx.Time,
+					}
+					if es.Rules.Upgrades.Allegro { // TODO(#193): use dedicated flag
+						events := make([]inter.EventPayloadI, 0, blockEvents.Len())
+						for _, e := range blockEvents {
+							events = append(events, e)
+						}
+						if proposed := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
+							proposal = *proposed
+							// TODO(#154): derive prevRandao from the proposal
+						} else {
+							// If no proposal is found but a block needs to be
+							// created (as this function has been called), we
+							// use a minimum time span to avoid removing gas
+							// allocation time from the next block.
+							proposal.Time = lastBlockHeader.Time + 1
+						}
+					} else {
+						// Collect transactions from events and schedule them.
+						unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
+						for _, e := range blockEvents {
+							unorderedTxs = append(unorderedTxs, e.Txs()...)
+						}
+
+						signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
+						proposal.Transactions = scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
+					}
+
+					blockDuration := time.Duration(proposal.Time - bs.LastBlock.Time)
 					blockBuilder := inter.NewBlockBuilder().
 						WithEpoch(blockCtx.Atropos.Epoch()).
 						WithNumber(number).
-						WithParentHash(lastBlockHeader.Hash).
-						WithTime(blockCtx.Time).
+						WithParentHash(proposal.ParentHash).
+						WithTime(proposal.Time).
 						WithPrevRandao(prevRandao).
 						WithGasLimit(maxBlockGas).
 						WithDuration(blockDuration)
@@ -265,18 +304,7 @@ func consensusCallbackBeginBlockFn(
 						)
 					}
 
-					// sort events by Lamport time
-					sort.Sort(confirmedEvents)
-
-					blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
-					unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
-					for _, e := range blockEvents {
-						unorderedTxs = append(unorderedTxs, e.Txs()...)
-					}
-
-					signer := gsignercache.Wrap(types.MakeSigner(chainCfg, new(big.Int).SetUint64(number), uint64(blockCtx.Time)))
-					orderedTxs := scrambler.GetExecutionOrder(unorderedTxs, signer, es.Rules.Upgrades.Sonic)
-
+					orderedTxs := proposal.Transactions
 					for i, receipt := range evmProcessor.Execute(orderedTxs) {
 						if receipt != nil { // < nil if skipped
 							blockBuilder.AddTransaction(orderedTxs[i], receipt)
@@ -493,4 +521,89 @@ func mergeCheaters(a, b lachesis.Cheaters) lachesis.Cheaters {
 		}
 	}
 	return merged
+}
+
+// extractProposalForNextBlock attempts to obtain the canonical block proposal for
+// the next block in the given events. A proposal is considered valid, if
+//   - it has the correct block number (last block number + 1), and
+//   - it has the correct parent hash (last block hash)
+//
+// If multiple valid proposals are found, the one proposed in the lowest turn
+// is returned. If there are multiple proposals with the same turn, the one with
+// the lowest hash is returned.
+//
+// If no valid proposals are found, nil is returned. In such a case, no or an
+// empty block should be produced.
+func extractProposalForNextBlock(
+	lastBlock *evmcore.EvmHeader,
+	events []inter.EventPayloadI,
+	logger log.Logger,
+) *inter.Proposal {
+
+	desiredBlockNumber := idx.Block(lastBlock.Number.Uint64() + 1)
+	parentHash := lastBlock.Hash
+
+	// Collect all payloads from events proposing the desired block.
+	payloads := []*inter.Payload{}
+	for _, e := range events {
+		payload := e.Payload()
+		if proposal := payload.Proposal; proposal != nil {
+			if proposal.Number != desiredBlockNumber {
+				logger.Warn(
+					"Confirmed events contains proposal with wrong block number",
+					"wanted", desiredBlockNumber,
+					"got", proposal.Number,
+					"creator", e.Creator(),
+				)
+				continue
+			}
+			if proposal.ParentHash != parentHash {
+				logger.Warn(
+					"Confirmed events contains proposal with wrong parent hash",
+					"wanted", parentHash,
+					"got", proposal.ParentHash,
+					"creator", e.Creator(),
+				)
+				continue
+			}
+
+			payloads = append(payloads, payload)
+		}
+	}
+	if len(payloads) > 1 {
+		logger.Warn("Found multiple proposals for the same block",
+			"block", desiredBlockNumber,
+			"proposals", len(payloads),
+		)
+	}
+
+	if len(payloads) == 0 {
+		return nil
+	}
+
+	if len(payloads) == 1 {
+		return payloads[0].Proposal
+	}
+
+	best := payloads[0]
+	for _, p := range payloads {
+		switch cmp.Compare(p.LastSeenProposalTurn, best.LastSeenProposalTurn) {
+		case -1:
+			best = p
+		case 0:
+			// The validation of events should not allow multiple proposals
+			// with the same turn number in a forkless DAG, and forks should
+			// be ignored by the consensus when producing confirmed events.
+			// However, to be conservative, we consider the possibility of
+			// two proposals with the same turn number and use the proposal
+			// hash as a tie breaker.
+			a := p.Proposal.Hash()
+			b := best.Proposal.Hash()
+			if bytes.Compare(a[:], b[:]) < 0 {
+				best = p
+			}
+		case 1:
+		}
+	}
+	return best.Proposal
 }
