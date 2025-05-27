@@ -33,9 +33,29 @@ pipeline {
             }
         }
 
-        stage('Run tests') {
+        stage('Run unit tests') {
             steps {
-                sh 'go test ./... --timeout 30m'
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    sh 'make unit-cover-all'
+                }
+            }
+        }
+
+        stage('Run integration tests') {
+            steps {
+                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                    sh 'make integration-cover-all'
+                }
+            }
+        }
+
+        stage('Upload test coverage') {
+            environment {
+                CODECOV_TOKEN = credentials('codecov-uploader-0xsoniclabs-global')
+            }
+            steps {
+                sh ('codecov upload-process -r 0xsoniclabs/sonic -f ./build/coverage/*/unit-cover.out -t ${CODECOV_TOKEN}')
+                sh ('codecov upload-process -r 0xsoniclabs/sonic -f ./build/coverage/*/integration-cover.out -t ${CODECOV_TOKEN}')
             }
         }
 

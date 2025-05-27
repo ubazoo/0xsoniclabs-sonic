@@ -34,7 +34,7 @@ sonic-image:
 
 .PHONY: test
 test:
-	go test -cover ./...
+	go test -cover --timeout 30m ./...
 
 .PHONY: coverage
 coverage:
@@ -48,18 +48,26 @@ fuzz:
 	go run github.com/dvyukov/go-fuzz/go-fuzz-build -o=./fuzzing/gossip-fuzz.zip ./gossip && \
 	go run github.com/dvyukov/go-fuzz/go-fuzz -workdir=./fuzzing -bin=./fuzzing/gossip-fuzz.zip
 
-.PHONY: integration-coverage
-integration-coverage: DATE=$(shell date +"%Y-%m-%d-%T")
-integration-coverage: export GOCOVERDIR=./build/coverage/${DATE}
-integration-coverage: 
+.PHONY: run-coverage
+run-coverage: DATE=$(shell date +"%Y-%m-%d-%T")
+run-coverage: export GOCOVERDIR=./build/coverage/${DATE}
+run-coverage:
 	@mkdir -p ${GOCOVERDIR} ;\
-	go test ./tests/ -coverpkg=${PACKAGES} -coverprofile=${GOCOVERDIR}/integration-cover.out ;\
-	go tool cover -html ${GOCOVERDIR}/integration-cover.out -o ${GOCOVERDIR}/integration-coverage.html ;\
-	echo "Coverage report generated in ${GOCOVERDIR}/integration-coverage.html"
+	go test -coverpkg=${COVERPACKAGES} --timeout=30m -coverprofile="${GOCOVERDIR}/${REPORTNAME}.out" ${TARGETPACKAGES} ;\
+	go tool cover -html ${GOCOVERDIR}/${REPORTNAME}.out -o ${GOCOVERDIR}/${REPORTNAME}.html ;\
+	echo "Coverage report generated in ${GOCOVERDIR}/${REPORTNAME}.html"
 
 .PHONY: integration-cover-all
-integration-cover-all: PACKAGES=./...
-integration-cover-all: integration-coverage
+integration-cover-all: COVERPACKAGES=./...
+integration-cover-all: TARGETPACKAGES=./tests
+integration-cover-all: REPORTNAME="integration-cover"
+integration-cover-all: run-coverage
+
+.PHONY: unit-cover-all
+unit-cover-all: COVERPACKAGES=`go list ./... | grep -v /tests`
+unit-cover-all: TARGETPACKAGES=`go list ./... | grep -v /tests`
+unit-cover-all: REPORTNAME="unit-cover"
+unit-cover-all: run-coverage
 
 .PHONY: fuzz-txpool-validatetx-cover
 fuzz-txpool-validatetx-cover: PACKAGES=./...,github.com/ethereum/go-ethereum/core/...
@@ -83,12 +91,12 @@ clean:
 # Linting
 
 .PHONY: vet
-vet: 
+vet:
 	go vet ./...
 
 STATICCHECK_VERSION = 2025.1
 .PHONY: staticcheck
-staticcheck: 
+staticcheck:
 	@go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
 	staticcheck ./...
 
