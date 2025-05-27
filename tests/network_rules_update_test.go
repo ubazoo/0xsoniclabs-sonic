@@ -2,6 +2,9 @@ package tests
 
 import (
 	"encoding/json"
+	"math/big"
+	"testing"
+
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
@@ -10,13 +13,14 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
-	"math/big"
-	"testing"
 )
 
 func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T) {
 	require := require.New(t)
-	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{FeatureSet: opera.AllegroFeatures})
+	net := StartIntegrationTestNetWithFakeGenesis(t,
+		IntegrationTestNetOptions{
+			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+		})
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -75,7 +79,10 @@ func TestNetworkRule_Update_RulesChangeIsDelayedUntilNextEpochStart(t *testing.T
 
 func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
 	require := require.New(t)
-	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{FeatureSet: opera.SonicFeatures})
+	net := StartIntegrationTestNetWithFakeGenesis(t,
+		IntegrationTestNetOptions{
+			Upgrades: AsPointer(opera.GetSonicUpgrades()),
+		})
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -119,7 +126,10 @@ func TestNetworkRule_Update_RulesChangeDuringEpoch_PreAllegro(t *testing.T) {
 
 func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	require := require.New(t)
-	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{FeatureSet: opera.AllegroFeatures})
+	net := StartIntegrationTestNetWithFakeGenesis(t,
+		IntegrationTestNetOptions{
+			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
+		})
 
 	client, err := net.GetClient()
 	require.NoError(err)
@@ -187,7 +197,10 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 
 func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
 	require := require.New(t)
-	net := StartIntegrationTestNetWithFakeGenesis(t, IntegrationTestNetOptions{FeatureSet: opera.SonicFeatures})
+	net := StartIntegrationTestNetWithFakeGenesis(t,
+		IntegrationTestNetOptions{
+			Upgrades: AsPointer(opera.GetSonicUpgrades()),
+		})
 
 	client, err := net.GetClient()
 	require.NoError(err)
