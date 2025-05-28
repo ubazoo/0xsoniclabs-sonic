@@ -507,8 +507,10 @@ func TestTransactionJSONSerialization(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
+	chainId := big.NewInt(17)
+
 	authorization := types.SetCodeAuthorization{
-		ChainID: *uint256.NewInt(17),
+		ChainID: *uint256.MustFromBig(chainId),
 		Address: common.Address{42},
 		Nonce:   5,
 		V:       1,
@@ -524,12 +526,14 @@ func TestTransactionJSONSerialization(t *testing.T) {
 			GasPrice: big.NewInt(500e9),
 		},
 		"accessList empty list": &types.AccessListTx{
+			ChainID:  chainId,
 			Nonce:    1,
 			To:       &common.Address{1},
 			Gas:      1e6,
 			GasPrice: big.NewInt(500e9),
 		},
 		"accessList": &types.AccessListTx{
+			ChainID:  chainId,
 			Nonce:    1,
 			To:       &common.Address{1},
 			Gas:      1e6,
@@ -539,6 +543,7 @@ func TestTransactionJSONSerialization(t *testing.T) {
 			},
 		},
 		"dynamicFee": &types.DynamicFeeTx{
+			ChainID:   chainId,
 			Nonce:     2,
 			To:        &common.Address{1},
 			Gas:       1e6,
@@ -546,12 +551,14 @@ func TestTransactionJSONSerialization(t *testing.T) {
 			GasTipCap: big.NewInt(500e9),
 		},
 		"blob empty list": &types.BlobTx{
+			ChainID:    uint256.MustFromBig(chainId),
 			Nonce:      3,
 			Gas:        1e6,
 			GasFeeCap:  uint256.NewInt(500e9),
 			BlobFeeCap: uint256.NewInt(500e9),
 		},
 		"blob": &types.BlobTx{
+			ChainID:    uint256.MustFromBig(chainId),
 			Nonce:      3,
 			Gas:        1e6,
 			GasFeeCap:  uint256.NewInt(500e9),
@@ -559,14 +566,16 @@ func TestTransactionJSONSerialization(t *testing.T) {
 			BlobHashes: []common.Hash{{0x01}},
 		},
 		"setCode empty list": &types.SetCodeTx{
-			Nonce: 4,
-			To:    common.Address{42},
-			Gas:   1e6,
+			ChainID: uint256.MustFromBig(chainId),
+			Nonce:   4,
+			To:      common.Address{42},
+			Gas:     1e6,
 		},
 		"setCode": &types.SetCodeTx{
-			Nonce: 4,
-			To:    common.Address{42},
-			Gas:   1e6,
+			ChainID: uint256.MustFromBig(chainId),
+			Nonce:   4,
+			To:      common.Address{42},
+			Gas:     1e6,
 			AuthList: []types.SetCodeAuthorization{
 				authorization,
 			},
@@ -575,7 +584,7 @@ func TestTransactionJSONSerialization(t *testing.T) {
 
 	for name, test := range tests {
 		t.Run(name, func(t *testing.T) {
-			signed := signTransaction(t, big.NewInt(1), test, key)
+			signed := signTransaction(t, chainId, test, key)
 
 			blockHash := common.Hash{1, 2, 3, 4}
 			blockNumber := uint64(4321)
@@ -595,8 +604,115 @@ func TestTransactionJSONSerialization(t *testing.T) {
 			require.Equal(t, int64(blockNumber), decoded.BlockNumber.ToInt().Int64())
 			require.Equal(t, index, uint64(*decoded.TransactionIndex))
 			require.Equal(t, signed.Hash(), rpcTransactionToTransaction(t, decoded).Hash())
+			require.Equal(t, chainId.Int64(), decoded.ChainID.ToInt().Int64())
+
 		})
 	}
+}
+
+func TestNewRPCTransaction_AllTxSignatureAndHashCanBeVerified(t *testing.T) {
+	chainId := big.NewInt(17)
+
+	tests := map[string]types.TxData{
+		"legacy": &types.LegacyTx{
+			Nonce:    0,
+			To:       &common.Address{1},
+			Gas:      1e6,
+			GasPrice: big.NewInt(500e9),
+		},
+		"accessList": &types.AccessListTx{
+			ChainID:  chainId,
+			Nonce:    0,
+			To:       &common.Address{1},
+			Gas:      1e6,
+			GasPrice: big.NewInt(500e9),
+			AccessList: types.AccessList{
+				{Address: common.Address{1}, StorageKeys: []common.Hash{{0x01}}},
+			},
+		},
+		"dynamicFee": &types.DynamicFeeTx{
+			ChainID:   chainId,
+			Nonce:     0,
+			To:        &common.Address{1},
+			Gas:       1e6,
+			GasFeeCap: big.NewInt(500e9),
+			GasTipCap: big.NewInt(500e9),
+		},
+		"blob": &types.BlobTx{
+			ChainID:    uint256.MustFromBig(chainId),
+			Nonce:      0,
+			Gas:        1e6,
+			GasFeeCap:  uint256.NewInt(500e9),
+			BlobFeeCap: uint256.NewInt(500e9),
+			BlobHashes: []common.Hash{{0x01}},
+		},
+		"setCode": &types.SetCodeTx{
+			ChainID:  uint256.MustFromBig(chainId),
+			Nonce:    0,
+			To:       common.Address{42},
+			Gas:      1e6,
+			AuthList: []types.SetCodeAuthorization{{}},
+		},
+	}
+
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			key, err := crypto.GenerateKey()
+			require.NoError(t, err)
+			signed := signTransaction(t, chainId, tx, key)
+
+			rpcTx := newRPCTransaction(signed, common.Hash{}, 0, 0, big.NewInt(0))
+			require.Equal(t, signed.Hash(), rpcTx.Hash)
+			require.Equal(t, chainId.Int64(), rpcTx.ChainID.ToInt().Int64())
+
+			// convert RPCTransaction back to Transaction and verify hash
+			decoded := rpcTransactionToTransaction(t, rpcTx)
+			require.Equal(t, decoded.Hash(), signed.Hash(),
+				"converted transaction hash does not match original")
+
+			// verify sender can be retrieved
+			sender, err := types.Sender(types.LatestSignerForChainID(rpcTx.ChainID.ToInt()), decoded)
+			require.NoError(t, err)
+			require.Equal(t, crypto.PubkeyToAddress(key.PublicKey), sender)
+		})
+	}
+}
+
+func TestNewRPCTransaction_LegacyTxSignedWithHomesteadCanBeReproducedAndVerified(t *testing.T) {
+
+	tx := &types.LegacyTx{
+		Nonce:    0,
+		To:       &common.Address{1},
+		Gas:      1e6,
+		GasPrice: big.NewInt(500e9),
+	}
+
+	key, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	signed, err := types.SignTx(types.NewTx(tx), types.HomesteadSigner{}, key)
+	require.NoError(t, err, "failed to sign transaction with Homestead signer")
+	// legacy transactions signed with Homestead signer must have chain ID 0
+	require.Equal(t, int64(0), signed.ChainId().Int64())
+
+	// convert to RPCTransaction
+	rpcTx := newRPCTransaction(signed, common.Hash{}, 0, 0, big.NewInt(0))
+	require.Equal(t, signed.Hash(), rpcTx.Hash)
+	require.Equal(t, int64(0), rpcTx.ChainID.ToInt().Int64())
+
+	// convert back to Transaction and verify hash
+	decoded := rpcTransactionToTransaction(t, rpcTx)
+	require.Equal(t, signed.Hash(), decoded.Hash())
+	require.Equal(t, int64(0), decoded.ChainId().Int64())
+
+	// verify sender can be retrieved
+	sender, err := types.Sender(types.HomesteadSigner{}, decoded)
+	require.NoError(t, err)
+	require.Equal(t, crypto.PubkeyToAddress(key.PublicKey), sender)
+	sender, err = types.Sender(types.LatestSignerForChainID(big.NewInt(42)), decoded)
+	require.NoError(t, err)
+	require.Equal(t, crypto.PubkeyToAddress(key.PublicKey), sender)
 }
 
 func TestAPI_EIP2935_InvokesHistoryStorageContract(t *testing.T) {
