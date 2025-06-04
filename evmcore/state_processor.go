@@ -291,15 +291,25 @@ func applyTransaction(
 	// For now, Sonic only supports Blob transactions without blob data.
 	if msg.BlobHashes != nil {
 		if len(msg.BlobHashes) > 0 {
+			statedb.EndTransaction()
 			return nil, 0, true, fmt.Errorf("blob data is not supported")
 		}
 		// PreCheck requires non-nil blobHashes not to be empty
 		msg.BlobHashes = nil
 	}
 
+	isAllegro := evm.ChainConfig().IsPrague(blockNumber, evm.Context.Time)
+	var snapshot int
+	if isAllegro {
+		snapshot = statedb.Snapshot()
+	}
 	// Apply the transaction to the current state (included in the env).
 	result, err := core.ApplyMessage(evm, msg, gp)
 	if err != nil {
+		if isAllegro {
+			statedb.RevertToSnapshot(snapshot)
+		}
+		statedb.EndTransaction()
 		return nil, 0, result == nil, err
 	}
 	// Notify about logs with potential state changes.
