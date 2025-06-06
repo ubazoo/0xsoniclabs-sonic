@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -389,6 +390,28 @@ func validateEvents(events chan NewTxsNotify, count int) error {
 
 func deriveSender(tx *types.Transaction) (common.Address, error) {
 	return types.Sender(types.HomesteadSigner{}, tx)
+}
+
+// setMinTip is a helper function that updates the minimum tip required by the
+// transaction pool for a new transaction, and drops all transactions below
+// this threshold.
+func setMinTip(pool *TxPool, price *big.Int) {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	old := pool.minTip
+	pool.minTip = price
+	// if the min miner fee increased, remove transactions below the new threshold
+	if price.Cmp(old) > 0 {
+		// pool.priced is sorted by GasFeeCap, so we have to iterate through pool.all instead
+		drop := pool.all.RemotesBelowTip(price)
+		for _, tx := range drop {
+			pool.removeTx(tx.Hash(), true)
+		}
+		pool.priced.Removed(len(drop))
+	}
+
+	log.Info("Transaction pool price threshold updated", "price", price)
 }
 
 type testChain struct {
@@ -890,7 +913,7 @@ func TestInvalidTransactions(t *testing.T) {
 	}
 
 	tx = transaction(1, 100000, key)
-	pool.gasPrice = big.NewInt(1000)
+	pool.minTip = big.NewInt(1000)
 	if err := pool.AddRemote(tx); err != ErrUnderpriced {
 		t.Error("expected", ErrUnderpriced, "got", err)
 	}
@@ -1977,11 +2000,28 @@ func TestTransactionPendingMinimumAllowance(t *testing.T) {
 	}
 }
 
-// Tests that setting the transaction pool gas price to a higher value correctly
+func TestTransactionPool_CanReadMinTipFromPool(t *testing.T) {
+	t.Parallel()
+
+	// Create the pool to test the min tip config
+	statedb := newTestTxPoolStateDb()
+	blockchain := NewTestBlockChain(statedb)
+
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	defer pool.Stop()
+
+	require.Equal(t, testTxPoolConfig.MinimumTip, pool.MinTip().Uint64(),
+		"min tip mismatch: have %v, want %v", pool.MinTip().Uint64(), testTxPoolConfig.MinimumTip)
+}
+
+// Tests that setting the transaction pool min tip to a higher value correctly
 // discards everything cheaper than that and moves any gapped transactions back
 // from the pending pool to the queue.
 //
 // Note, local transactions are never allowed to be dropped.
+// Note, this test is for Legacy transactions only. These transactions use the
+// gas price field to determine the transaction tip, and thus the minimum
+// acceptable tip can be used to filter out transactions that have a low gas price.
 func TestTransactionPoolRepricing(t *testing.T) {
 	t.Parallel()
 
@@ -2041,8 +2081,8 @@ func TestTransactionPoolRepricing(t *testing.T) {
 	if err := validateTxPoolInternals(pool); err != nil {
 		t.Fatalf("pool internal state corrupted: %v", err)
 	}
-	// Reprice the pool and check that underpriced transactions get dropped
-	pool.SetGasPrice(big.NewInt(2))
+	// Update minimum accepted tip, so that under tipped transactions are dropped
+	setMinTip(pool, big.NewInt(2))
 
 	pending, queued = pool.Stats()
 	if pending != 2 {
@@ -2105,7 +2145,7 @@ func TestTransactionPoolRepricing(t *testing.T) {
 	}
 }
 
-// Tests that setting the transaction pool gas price to a higher value correctly
+// Tests that setting the transaction pool min tip to a higher value correctly
 // discards everything cheaper (legacy & dynamic fee) than that and moves any
 // gapped transactions back from the pending pool to the queue.
 //
@@ -2166,8 +2206,8 @@ func TestTransactionPoolRepricingDynamicFee(t *testing.T) {
 	if err := validateTxPoolInternals(pool); err != nil {
 		t.Fatalf("pool internal state corrupted: %v", err)
 	}
-	// Reprice the pool and check that underpriced transactions get dropped
-	pool.SetGasPrice(big.NewInt(2))
+	// Update minimum accepted tip, so that under tipped transactions are dropped
+	setMinTip(pool, big.NewInt(2))
 
 	pending, queued = pool.Stats()
 	if pending != 2 {
@@ -2236,7 +2276,7 @@ func TestTransactionPoolRepricingDynamicFee(t *testing.T) {
 	}
 }
 
-// Tests that setting the transaction pool gas price to a higher value does not
+// Tests that setting the transaction pool min tip to a higher value does not
 // remove local transactions (legacy & dynamic fee).
 func TestTransactionPoolRepricingKeepsLocals(t *testing.T) {
 	t.Parallel()
@@ -2296,13 +2336,10 @@ func TestTransactionPoolRepricingKeepsLocals(t *testing.T) {
 	validate()
 
 	// Reprice the pool and check that nothing is dropped
-	pool.SetGasPrice(big.NewInt(2))
+	setMinTip(pool, big.NewInt(2))
 	validate()
 
-	pool.SetGasPrice(big.NewInt(2))
-	pool.SetGasPrice(big.NewInt(4))
-	pool.SetGasPrice(big.NewInt(8))
-	pool.SetGasPrice(big.NewInt(100))
+	setMinTip(pool, big.NewInt(100))
 	validate()
 }
 
