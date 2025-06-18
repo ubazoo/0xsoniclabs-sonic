@@ -85,7 +85,8 @@ type Emitter struct {
 	payloadIndexer *ancestor.PayloadIndexer
 
 	intervals                EmitIntervals
-	globalConfirmingInterval time.Duration
+	globalConfirmingInterval atomic.Uint64
+	intervalsMinLock         sync.Mutex // lock for intervals.Min
 
 	done chan struct{}
 	wg   sync.WaitGroup
@@ -128,17 +129,17 @@ func NewEmitter(
 	// It increases the chance of detecting parallel instances
 	rand := rand.New(rand.NewPCG(uint64(os.Getpid()), uint64(time.Now().UnixNano())))
 	config.EmitIntervals = config.EmitIntervals.RandomizeEmitTime(rand)
-
-	return &Emitter{
-		config:                   config,
-		world:                    world,
-		originatedTxs:            originatedtxs.New(SenderCountBufferSize),
-		intervals:                config.EmitIntervals,
-		globalConfirmingInterval: config.EmitIntervals.Confirming,
-		Periodic:                 logger.Periodic{Instance: logger.New()},
-		baseFeeSource:            baseFeeSource,
-		errorLock:                errorLock,
+	res := &Emitter{
+		config:        config,
+		world:         world,
+		originatedTxs: originatedtxs.New(SenderCountBufferSize),
+		intervals:     config.EmitIntervals,
+		Periodic:      logger.Periodic{Instance: logger.New()},
+		baseFeeSource: baseFeeSource,
+		errorLock:     errorLock,
 	}
+	res.globalConfirmingInterval.Store(uint64(config.EmitIntervals.Confirming))
+	return res
 }
 
 // init emitter without starting events emission
@@ -218,7 +219,12 @@ func (em *Emitter) tick() {
 	}
 
 	em.recheckChallenges()
-	if em.timeSinceLastEmit() >= em.intervals.Min {
+
+	em.intervalsMinLock.Lock()
+	min := em.intervals.Min
+	em.intervalsMinLock.Unlock()
+
+	if em.timeSinceLastEmit() >= min {
 		_, err := em.EmitEvent()
 		if err != nil {
 			em.Log.Error("Event emitting error", "err", err)
