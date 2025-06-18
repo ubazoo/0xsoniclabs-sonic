@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"fmt"
 	"math/big"
+	"slices"
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -38,6 +39,8 @@ import (
 	"github.com/0xsoniclabs/sonic/utils"
 )
 
+//go:generate mockgen -source=c_block_callbacks.go -package=gossip -destination=c_block_callbacks_mock.go
+
 var (
 	// Ethereum compatible metrics set (see go-ethereum/core)
 
@@ -49,8 +52,10 @@ var (
 	blockExecutionNonResettingTimer = metrics.GetOrRegisterTimer("chain/execution/nonresetting", nil)
 	blockAgeGauge                   = metrics.GetOrRegisterGauge("chain/block/age", nil)
 
-	processedTxsMeter    = metrics.GetOrRegisterMeter("chain/txs/processed", nil)
-	skippedTxsMeter      = metrics.GetOrRegisterMeter("chain/txs/skipped", nil)
+	processedTxsMeter = metrics.GetOrRegisterMeter("chain/txs/processed", nil)
+	skippedTxsMeter   = metrics.GetOrRegisterMeter("chain/txs/skipped", nil)
+	invalidTxsMeter   = metrics.GetOrRegisterMeter("chain/txs/invalid", nil)
+
 	confirmedEventsMeter = metrics.GetOrRegisterMeter("chain/events/confirmed", nil) // events received from lachesis
 	spilledEventsMeter   = metrics.GetOrRegisterMeter("chain/events/spilled", nil)   // tx excluded because of MaxBlockGas
 )
@@ -206,6 +211,11 @@ func consensusCallbackBeginBlockFn(
 
 					proposal.Time = atroposTime
 				}
+
+				// Filter invalid transactions from the proposal.
+				proposal.Transactions = filterNonPermissibleTransactions(
+					proposal.Transactions, &es.Rules, log.Root(), invalidTxsMeter,
+				)
 
 				// Make sure the new block time is after the last block time.
 				if proposal.Time <= bs.LastBlock.Time {
@@ -655,4 +665,91 @@ func extractProposalForNextBlock(
 		}
 	}
 	return best.Proposal, proposers[best]
+}
+
+// filterNonPermissibleTransactions filters out transactions that are not allowed
+// to be included in a block according to the network rules. It returns a slice
+// of permissible transactions. For encountered non-permissible transactions
+// log messages are emitted and the number of such transactions is reported to
+// the provided metric counter.
+func filterNonPermissibleTransactions(
+	transactions []*types.Transaction,
+	rules *opera.Rules,
+	log log.Logger,
+	counter metricCounter,
+) []*types.Transaction {
+	// This filter is only enabled with the Allegro upgrade.
+	if !rules.Upgrades.Allegro {
+		return transactions
+	}
+	return slices.DeleteFunc(transactions, func(tx *types.Transaction) bool {
+		if err := isPermissible(tx, rules); err != nil {
+			if log != nil {
+				log.Warn("Non-permissible transaction in the proposal", "tx", tx.Hash(), "issue", err)
+			}
+			if counter != nil {
+				counter.Mark(1)
+			}
+			return true
+		}
+		return false
+	})
+}
+
+// isPermissible checks whether a transaction is allowed to be included in a
+// block according to the network rules. It is used to control the set of
+// supported transaction types and their properties on the block chain.
+//
+// Rejected transactions are considered non-permissible transactions.
+// Honest validators should not suggest non-permissible transactions.
+//
+// Permissible transactions may still be rejected by the block processor due to
+// nonce or balance issues. In such cases, the transaction is considered a
+// skipped transaction. Skips should be minimized, but can not be completely
+// avoided.
+func isPermissible(
+	tx *types.Transaction,
+	rules *opera.Rules,
+) error {
+
+	if tx == nil {
+		return fmt.Errorf("nil transaction")
+	}
+
+	// -- Check transaction type --
+
+	maxTxType := uint8(types.BlobTxType)
+	if rules.Upgrades.Allegro {
+		maxTxType = types.SetCodeTxType
+	}
+	if tx.Type() > maxTxType {
+		return fmt.Errorf("unsupported transaction type %d, max supported is %d", tx.Type(), maxTxType)
+	}
+
+	// -- Check Type specific properties --
+
+	if tx.Type() == types.BlobTxType {
+		if have := len(tx.BlobHashes()); have > 0 {
+			return fmt.Errorf(
+				"blob transaction with blob hashes is not supported, got %d",
+				have,
+			)
+		}
+	}
+
+	if tx.Type() == types.SetCodeTxType {
+		if have := len(tx.SetCodeAuthorizations()); have == 0 {
+			return fmt.Errorf(
+				"set code transaction without authorizations is not supported",
+			)
+		}
+	}
+
+	return nil
+}
+
+// metricCounter is an abstraction of the *metrics.Meter type to facilitate
+// mocking in tests.
+type metricCounter interface {
+	Mark(int64)
 }

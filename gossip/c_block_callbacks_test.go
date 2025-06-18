@@ -381,3 +381,184 @@ func generateKeyPair(t testing.TB) (*encryption.PrivateKey, validatorpk.PubKey) 
 
 	return privateKey, publicKey
 }
+
+func TestFilterNonPermissibleTransactions_InactiveWithoutAllegro(t *testing.T) {
+	require := require.New(t)
+
+	withoutAllegro := opera.Rules{}
+	withAllegro := opera.Rules{
+		Upgrades: opera.Upgrades{
+			Allegro: true,
+		},
+	}
+
+	valid := types.NewTx(&types.LegacyTx{})
+	invalid := types.NewTx(&types.SetCodeTx{})
+
+	require.NoError(isPermissible(valid, &withAllegro))
+	require.Error(isPermissible(invalid, &withAllegro))
+
+	txs := []*types.Transaction{valid, invalid}
+
+	require.Equal(txs, filterNonPermissibleTransactions(txs, &withoutAllegro, nil, nil))
+	require.Equal([]*types.Transaction{valid}, filterNonPermissibleTransactions(txs, &withAllegro, nil, nil))
+}
+
+func TestFilterNonPermissibleTransactions_FiltersNonPermissibleTransactions(t *testing.T) {
+	rules := opera.Rules{
+		Upgrades: opera.Upgrades{
+			Allegro: true,
+		},
+	}
+
+	valid1 := types.NewTx(&types.LegacyTx{Nonce: 1})
+	valid2 := types.NewTx(&types.LegacyTx{Nonce: 2})
+	valid3 := types.NewTx(&types.LegacyTx{Nonce: 3})
+
+	invalid := types.NewTx(&types.SetCodeTx{})
+
+	txs := []*types.Transaction{invalid, valid1, invalid, valid2, invalid, invalid, valid3, invalid}
+	want := []*types.Transaction{valid1, valid2, valid3}
+	require.Equal(t, want, filterNonPermissibleTransactions(txs, &rules, nil, nil))
+}
+
+func TestFilterNonPermissibleTransactions_LogsIssuesOfNonPermissibleTransactions(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	log := logger.NewMockLogger(ctrl)
+
+	rules := opera.Rules{
+		Upgrades: opera.Upgrades{
+			Allegro: true,
+		},
+	}
+
+	invalid1 := types.NewTx(&types.SetCodeTx{})
+	invalid2 := types.NewTx(&types.BlobTx{
+		BlobHashes: []common.Hash{{1, 2, 3}},
+	})
+
+	log.EXPECT().Warn(
+		"Non-permissible transaction in the proposal",
+		"tx", gomock.Any(),
+		"issue", isPermissible(invalid1, &rules),
+	)
+
+	log.EXPECT().Warn(
+		"Non-permissible transaction in the proposal",
+		"tx", gomock.Any(),
+		"issue", isPermissible(invalid2, &rules),
+	)
+
+	filterNonPermissibleTransactions(
+		[]*types.Transaction{invalid1, invalid2},
+		&rules,
+		log,
+		nil,
+	)
+}
+
+func TestFilterNonPermissibleTransactions_ReportsNonPermissibleTransactionsToMonitoring(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	counter := NewMockmetricCounter(ctrl)
+
+	rules := opera.Rules{
+		Upgrades: opera.Upgrades{
+			Allegro: true,
+		},
+	}
+
+	valid := types.NewTx(&types.LegacyTx{Nonce: 1})
+	invalid := types.NewTx(&types.SetCodeTx{})
+
+	// One issue reported per invalid transaction.
+	counter.EXPECT().Mark(int64(1))
+	counter.EXPECT().Mark(int64(1))
+
+	filterNonPermissibleTransactions(
+		[]*types.Transaction{valid, invalid, valid, invalid},
+		&rules,
+		nil,
+		counter,
+	)
+}
+
+func TestIsPermissible_AcceptsPermissibleTransactions(t *testing.T) {
+	tests := map[string]*types.Transaction{
+		"legacy":      types.NewTx(&types.LegacyTx{}),
+		"access list": types.NewTx(&types.AccessListTx{}),
+		"dynamic fee": types.NewTx(&types.DynamicFeeTx{}),
+		"blob":        types.NewTx(&types.BlobTx{}),
+		"set code": types.NewTx(&types.SetCodeTx{
+			AuthList: []types.SetCodeAuthorization{{}},
+		}),
+	}
+
+	rules := opera.Rules{
+		Upgrades: opera.Upgrades{
+			Allegro: true,
+		},
+	}
+	for name, tx := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.NoError(t, isPermissible(tx, &rules))
+		})
+	}
+}
+
+func TestIsPermissible_AcceptsSetCodeTransactionsOnlyInAllegro(t *testing.T) {
+	tx := types.NewTx(&types.SetCodeTx{
+		AuthList: []types.SetCodeAuthorization{{}},
+	})
+
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("allegro=%t", enabled), func(t *testing.T) {
+			rules := opera.Rules{
+				Upgrades: opera.Upgrades{
+					Allegro: enabled,
+				},
+			}
+			if enabled {
+				require.NoError(t, isPermissible(tx, &rules))
+			} else {
+				require.ErrorContains(t,
+					isPermissible(tx, &rules),
+					"unsupported transaction type",
+				)
+			}
+		})
+	}
+}
+
+func TestIsPermissible_DetectsNonPermissibleTransactions(t *testing.T) {
+	tests := map[string]struct {
+		transaction *types.Transaction
+		issue       string
+	}{
+		"nil transaction": {
+			transaction: nil,
+			issue:       "nil transaction",
+		},
+		"blob with blob hashes": {
+			transaction: types.NewTx(&types.BlobTx{
+				BlobHashes: []common.Hash{{1, 2, 3}},
+			}),
+			issue: "blob transaction with blob hashes is not supported, got 1",
+		},
+		"set code without authorization": {
+			transaction: types.NewTx(&types.SetCodeTx{}),
+			issue:       "set code transaction without authorizations is not supported",
+		},
+	}
+
+	rules := opera.Rules{
+		Upgrades: opera.Upgrades{
+			Allegro: true,
+		},
+	}
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+			err := isPermissible(test.transaction, &rules)
+			require.ErrorContains(t, err, test.issue)
+		})
+	}
+}
