@@ -3,11 +3,13 @@ package tests
 import (
 	"context"
 	"iter"
+	"math/big"
 	"strings"
 	"testing"
 
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
@@ -35,11 +37,20 @@ func (tc *TestCase) String() string {
 }
 
 func TestGasCostTest_Sonic(t *testing.T) {
+	t.Run("with distributed proposers", func(t *testing.T) {
+		testGasCosts_Sonic(t, false)
+	})
+	t.Run("with single proposer", func(t *testing.T) {
+		testGasCosts_Sonic(t, true)
+	})
+}
 
-	net := StartIntegrationTestNet(t,
-		IntegrationTestNetOptions{
-			Upgrades: AsPointer(opera.GetSonicUpgrades()),
-		})
+func testGasCosts_Sonic(t *testing.T, singleProposer bool) {
+	upgrades := opera.GetSonicUpgrades()
+	upgrades.SingleProposerBlockFormation = singleProposer
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -114,7 +125,9 @@ func TestGasCostTest_Sonic(t *testing.T) {
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
 				require.NoError(t, err)
 				unused := tx.Gas() - expectedCost
-				expectedCost += unused / 10
+				if !singleProposer {
+					expectedCost += unused / 10
+				}
 
 				receipt, err := session.Run(tx)
 				require.NoError(t, err)
@@ -126,11 +139,20 @@ func TestGasCostTest_Sonic(t *testing.T) {
 }
 
 func TestGasCostTest_Allegro(t *testing.T) {
+	t.Run("with distributed proposers", func(t *testing.T) {
+		testGasCosts_Allegro(t, false)
+	})
+	t.Run("with single proposer", func(t *testing.T) {
+		testGasCosts_Allegro(t, true)
+	})
+}
 
-	net := StartIntegrationTestNet(t,
-		IntegrationTestNetOptions{
-			Upgrades: AsPointer(opera.GetAllegroUpgrades()),
-		})
+func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
+	upgrades := opera.GetAllegroUpgrades()
+	upgrades.SingleProposerBlockFormation = singleProposer
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
 
 	client, err := net.GetClient()
 	require.NoError(t, err)
@@ -244,7 +266,9 @@ func TestGasCostTest_Allegro(t *testing.T) {
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
 				require.NoError(t, err)
 				unused := tx.Gas() - expectedCost
-				expectedCost += unused / 10
+				if !singleProposer {
+					expectedCost += unused / 10
+				}
 
 				if floorDataGas > expectedCost {
 					expectedCost = floorDataGas
@@ -258,10 +282,23 @@ func TestGasCostTest_Allegro(t *testing.T) {
 			})
 		}
 
+		// The number of cases with costs smaller than floor data gas depends on
+		// the charging of the excess gas fees, which is disabled in single
+		// proposer mode.
+		numCasesWithCostsSmallerThanFloor := 12
+		if singleProposer {
+			numCasesWithCostsSmallerThanFloor = 16
+		}
+
 		// If the test case generation is modified, please change the expected number of out of bound cases
 		// It is important for this test that these values are never 0
 		require.Equal(t, 12, floorGreaterThan20Percent, "expected 12 cases where floor data gas is greater than 20% of the gas, got %d", floorGreaterThan20Percent)
-		require.Equal(t, 12, expectedSmallerThanFloor, "expected 12 cases where the expected cost is smaller than the floor data gas, got %d", expectedSmallerThanFloor)
+		require.Equal(t,
+			numCasesWithCostsSmallerThanFloor, expectedSmallerThanFloor,
+			"expected %d cases where the expected cost is smaller than the floor data gas, got %d",
+			numCasesWithCostsSmallerThanFloor,
+			expectedSmallerThanFloor,
+		)
 	})
 }
 
@@ -421,4 +458,101 @@ func makeGasCostTestInputs(
 		},
 	)
 
+}
+
+func TestExcessGasCharges_DisabledInSingleProposerModeInNewAndHistoricRuns(t *testing.T) {
+	require := require.New(t)
+
+	upgrades := opera.GetAllegroUpgrades()
+	net := StartIntegrationTestNet(t, IntegrationTestNetOptions{
+		Upgrades: &upgrades,
+	})
+
+	account := NewAccount()
+	_, err := net.EndowAccount(account.Address(), big.NewInt(1e18))
+	require.NoError(err)
+
+	chainId := net.GetChainId()
+	signer := types.LatestSignerForChainID(chainId)
+	txs := []*types.Transaction{}
+	for i := range 2 {
+		txs = append(txs, types.MustSignNewTx(
+			account.PrivateKey, signer,
+			&types.AccessListTx{
+				ChainID:  chainId,
+				Nonce:    uint64(i),
+				To:       &common.Address{},
+				Value:    big.NewInt(1),
+				GasPrice: big.NewInt(1e12),
+				Gas:      50_000,
+			},
+		))
+	}
+
+	// --- run transactions in different configurations ---
+
+	receipts := []*types.Receipt{}
+
+	receipt, err := net.Run(txs[0])
+	require.NoError(err)
+
+	// Should charge 10% of the unused gas.
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+	require.Equal(uint64(21_000+(50_000-21_000)/10), receipt.GasUsed)
+	receipts = append(receipts, receipt)
+
+	// Switch to single proposer mode.
+	updateNetworkRules(t, net, map[string]map[string]bool{
+		"Upgrades": {
+			"SingleProposerBlockFormation": true,
+		},
+	})
+	require.NoError(net.AdvanceEpoch(1))
+
+	receipt, err = net.Run(types.MustSignNewTx(
+		account.PrivateKey, signer,
+		&types.AccessListTx{
+			ChainID:  chainId,
+			Nonce:    1,
+			To:       &common.Address{},
+			Value:    big.NewInt(1),
+			GasPrice: big.NewInt(1e12),
+			Gas:      50_000,
+		},
+	))
+	require.NoError(err)
+
+	// There should be no excess gas charge in single proposer mode.
+	require.Equal(types.ReceiptStatusSuccessful, receipt.Status)
+	require.Equal(uint64(21_000), receipt.GasUsed)
+	receipts = append(receipts, receipt)
+
+	require.Len(receipts, len(txs))
+
+	// --- check historic blocks gas charges ---
+
+	checkHistoricBlocks := func() {
+		// Check that historic queries apply the correct gas charges.
+		client, err := net.GetClient()
+		require.NoError(err)
+		defer client.Close()
+
+		for _, receipt := range receipts {
+			var result []struct {
+				TransactionHash common.Hash `json:"transactionHash"`
+				Result          struct {
+					GasUsed hexutil.Uint64 `json:"gasUsed"`
+				}
+			}
+			targetBlock := hexutil.EncodeUint64(receipt.BlockNumber.Uint64())
+			require.NoError(client.Client().Call(&result, "trace_block", targetBlock))
+			require.Equal(receipt.TxHash, result[0].TransactionHash)
+			require.Equal(receipt.GasUsed, uint64(result[0].Result.GasUsed))
+		}
+	}
+
+	// Check that historic network rules are used and retained during restarts.
+	checkHistoricBlocks()
+	require.NoError(net.Restart())
+	checkHistoricBlocks()
 }

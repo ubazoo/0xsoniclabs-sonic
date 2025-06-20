@@ -19,6 +19,7 @@ package ethapi
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -36,6 +37,7 @@ import (
 	"github.com/0xsoniclabs/sonic/inter"
 	"github.com/0xsoniclabs/sonic/inter/iblockproc"
 	"github.com/0xsoniclabs/sonic/inter/state"
+	"github.com/0xsoniclabs/sonic/opera"
 )
 
 // PeerProgress is synchronization status of a peer
@@ -51,7 +53,7 @@ type PeerProgress struct {
 // Backend interface provides the common API services (that are provided by
 // both full and light clients) with access to necessary functions.
 //
-//go:generate mockgen -source=backend.go -destination=mock_backend.go -package=ethapi
+//go:generate mockgen -source=backend.go -destination=backend_mock.go -package=ethapi
 type Backend interface {
 	// General Ethereum API
 	Progress() PeerProgress
@@ -90,6 +92,8 @@ type Backend interface {
 	ChainConfig(blockHeight idx.Block) *params.ChainConfig
 	ChainID() *big.Int
 	CurrentBlock() *evmcore.EvmBlock
+
+	GetNetworkRules(ctx context.Context, blockHeight idx.Block) (*opera.Rules, error)
 
 	// Lachesis DAG API
 	GetEventPayload(ctx context.Context, shortEventID string) (*inter.EventPayload, error)
@@ -161,4 +165,21 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 			Public:    true,
 		},
 	}
+}
+
+// GetVmConfig is a utility function resolving the VM configuration for a block
+// height based on the network rules.
+func GetVmConfig(
+	ctx context.Context,
+	backend Backend,
+	blockHeight idx.Block,
+) (vm.Config, error) {
+	rules, err := backend.GetNetworkRules(ctx, blockHeight)
+	if err != nil {
+		return vm.Config{}, err
+	}
+	if rules == nil {
+		return vm.Config{}, fmt.Errorf("no network rules found for block height %d", blockHeight)
+	}
+	return opera.GetVmConfig(*rules), nil
 }
