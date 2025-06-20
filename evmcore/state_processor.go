@@ -25,6 +25,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 
 	"github.com/0xsoniclabs/sonic/inter/state"
@@ -71,7 +72,7 @@ func NewStateProcessor(config *params.ChainConfig, bc DummyChain) *StateProcesso
 func (p *StateProcessor) Process(
 	block *EvmBlock, statedb state.StateDB, cfg vm.Config, usedGas *uint64, onNewLog func(*types.Log),
 ) (
-	types.Receipts, []*types.Log, []uint32, error,
+	types.Receipts, []*types.Log, []uint32,
 ) {
 	receipts := make(types.Receipts, 0, len(block.Transactions))
 	allLogs := make([]*types.Log, 0, len(block.Transactions)*10) // 10 logs per tx is a reasonable estimate
@@ -79,7 +80,6 @@ func (p *StateProcessor) Process(
 	var (
 		gp           = new(core.GasPool).AddGas(block.GasLimit)
 		receipt      *types.Receipt
-		skip         bool
 		header       = block.Header()
 		time         = uint64(block.Time.Unix())
 		blockContext = NewEVMBlockContext(header, p.bc, nil)
@@ -97,23 +97,24 @@ func (p *StateProcessor) Process(
 	for i, tx := range block.Transactions {
 		msg, err := TxAsMessage(tx, signer, header.BaseFee)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+			log.Info("Failed to convert transaction to message", "tx", tx.Hash().Hex(), "err", err)
+			skipped = append(skipped, uint32(i))
+			receipts = append(receipts, nil)
+			continue // skip this transaction, but continue processing the rest of the block
 		}
 
 		statedb.SetTxContext(tx.Hash(), i)
-		receipt, _, skip, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
-		if skip {
+		receipt, _, err = applyTransaction(msg, gp, statedb, blockNumber, tx, usedGas, vmenv, onNewLog)
+		if err != nil {
+			log.Info("Failed to apply transaction", "tx", tx.Hash().Hex(), "err", err)
 			skipped = append(skipped, uint32(i))
 			receipts = append(receipts, nil)
-			continue
-		}
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
+			continue // skip this transaction, but continue processing the rest of the block
 		}
 		receipts = append(receipts, receipt)
 		allLogs = append(allLogs, receipt.Logs...)
 	}
-	return receipts, allLogs, skipped, nil
+	return receipts, allLogs, skipped
 }
 
 // BeginBlock starts the processing of a new block and returns a function to
@@ -179,11 +180,11 @@ func (tp *TransactionProcessor) Run(i int, tx *types.Transaction) (
 		)
 	}
 	tp.stateDb.SetTxContext(tx.Hash(), i)
-	receipt, _, skip, err := applyTransaction(
+	receipt, _, err = applyTransaction(
 		msg, tp.gp, tp.stateDb, tp.blockNumber, tx,
 		&tp.usedGas, tp.vmEnvironment, tp.onNewLog,
 	)
-	return receipt, skip, err
+	return receipt, err != nil, err
 }
 
 // ApplyTransactionWithEVM attempts to apply a transaction to the given state database
@@ -289,7 +290,6 @@ func applyTransaction(
 ) (
 	*types.Receipt,
 	uint64,
-	bool,
 	error,
 ) {
 	// Create a new context to be used in the EVM environment.
@@ -303,7 +303,7 @@ func applyTransaction(
 	if msg.BlobHashes != nil {
 		if len(msg.BlobHashes) > 0 {
 			statedb.EndTransaction()
-			return nil, 0, true, fmt.Errorf("blob data is not supported")
+			return nil, 0, fmt.Errorf("blob data is not supported")
 		}
 		// PreCheck requires non-nil blobHashes not to be empty
 		msg.BlobHashes = nil
@@ -321,7 +321,7 @@ func applyTransaction(
 			statedb.RevertToSnapshot(snapshot)
 		}
 		statedb.EndTransaction()
-		return nil, 0, result == nil, err
+		return nil, 0, err
 	}
 	// Notify about logs with potential state changes.
 	// At this point the final block hash is not yet known, so we pass an empty
@@ -360,7 +360,7 @@ func applyTransaction(
 	receipt.Bloom = types.CreateBloom(receipt)
 	receipt.BlockNumber = blockNumber
 	receipt.TransactionIndex = uint(statedb.TxIndex())
-	return receipt, result.UsedGas, false, err
+	return receipt, result.UsedGas, nil
 }
 
 func TxAsMessage(tx *types.Transaction, signer types.Signer, baseFee *big.Int) (*core.Message, error) {
