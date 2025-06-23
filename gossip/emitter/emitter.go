@@ -67,8 +67,8 @@ type Emitter struct {
 
 	// note: track validators and epoch internally to avoid referring to
 	// validators of a future epoch inside OnEventConnected of last epoch event
-	validators *pos.Validators
-	epoch      idx.Epoch
+	validators atomic.Pointer[pos.Validators]
+	epoch      atomic.Uint32
 
 	// challenges is deadlines when each validator should emit an event
 	challenges map[idx.ValidatorID]time.Time
@@ -335,7 +335,7 @@ func (em *Emitter) loadPrevEmitTime() time.Time {
 	if time := em.prevEmittedAtTime.Load(); time != nil {
 		prevEmittedAtTime = *time
 	}
-	prevEventID := em.world.GetLastEvent(em.epoch, em.config.Validator.ID)
+	prevEventID := em.world.GetLastEvent(idx.Epoch(em.epoch.Load()), em.config.Validator.ID)
 	if prevEventID == nil {
 		return prevEmittedAtTime
 	}
@@ -361,12 +361,12 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	)
 
 	// Find parents
-	selfParent, parents, ok := em.chooseParents(em.epoch, em.config.Validator.ID)
+	selfParent, parents, ok := em.chooseParents(idx.Epoch(em.epoch.Load()), em.config.Validator.ID)
 	if !ok {
 		return nil, nil
 	}
 	prevEmitted := em.readLastEmittedEventID()
-	if prevEmitted != nil && prevEmitted.Epoch() >= em.epoch {
+	if prevEmitted != nil && prevEmitted.Epoch() >= idx.Epoch(em.epoch.Load()) {
 		if selfParent == nil || *selfParent != *prevEmitted {
 			// This is a user-facing error, so we want to provide a clear message.
 			//nolint:staticcheck // ST1005: allow capitalized error message and punctuation
@@ -410,7 +410,7 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 
 	mutEvent := &inter.MutableEventPayload{}
 	mutEvent.SetVersion(version)
-	mutEvent.SetEpoch(em.epoch)
+	mutEvent.SetEpoch(idx.Epoch(em.epoch.Load()))
 	mutEvent.SetSeq(selfParentSeq + 1)
 	mutEvent.SetCreator(em.config.Validator.ID)
 
@@ -430,8 +430,9 @@ func (em *Emitter) createEvent(sortedTxs *transactionsByPriceAndNonce) (*inter.E
 	err := em.world.Build(mutEvent, nil)
 	if err != nil {
 		if err == ErrNotEnoughGasPower {
+			validators := em.validators.Load()
 			em.Warn(time.Second, "Not enough gas power to emit event. Too small stake?",
-				"stake%", 100*float64(em.validators.Get(em.config.Validator.ID))/float64(em.validators.TotalWeight()))
+				"stake%", 100*float64(validators.Get(em.config.Validator.ID))/float64(validators.TotalWeight()))
 		} else {
 			em.Log.Warn("Dropped event while emitting", "err", err)
 		}
@@ -490,7 +491,7 @@ func (em *Emitter) idle() bool {
 }
 
 func (em *Emitter) isValidator() bool {
-	return em.config.Validator.ID != 0 && em.validators.Exists(em.config.Validator.ID)
+	return em.config.Validator.ID != 0 && em.validators.Load().Exists(em.config.Validator.ID)
 }
 
 func (em *Emitter) nameEventForDebug(e *inter.EventPayload) {
