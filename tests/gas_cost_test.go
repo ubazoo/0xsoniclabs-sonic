@@ -265,14 +265,14 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 
 				expectedCost, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.SetCodeAuthorizations(), tx.To() == nil, true, true, true)
 				require.NoError(t, err)
-				unused := tx.Gas() - expectedCost
-				if !singleProposer {
-					expectedCost += unused / 10
-				}
 
 				if floorDataGas > expectedCost {
 					expectedCost = floorDataGas
 					expectedSmallerThanFloor++
+				}
+				if !singleProposer {
+					unused := tx.Gas() - expectedCost
+					expectedCost += unused / 10
 				}
 
 				receipt, err := session.Run(tx)
@@ -282,23 +282,10 @@ func testGasCosts_Allegro(t *testing.T, singleProposer bool) {
 			})
 		}
 
-		// The number of cases with costs smaller than floor data gas depends on
-		// the charging of the excess gas fees, which is disabled in single
-		// proposer mode.
-		numCasesWithCostsSmallerThanFloor := 12
-		if singleProposer {
-			numCasesWithCostsSmallerThanFloor = 16
-		}
-
 		// If the test case generation is modified, please change the expected number of out of bound cases
 		// It is important for this test that these values are never 0
 		require.Equal(t, 12, floorGreaterThan20Percent, "expected 12 cases where floor data gas is greater than 20% of the gas, got %d", floorGreaterThan20Percent)
-		require.Equal(t,
-			numCasesWithCostsSmallerThanFloor, expectedSmallerThanFloor,
-			"expected %d cases where the expected cost is smaller than the floor data gas, got %d",
-			numCasesWithCostsSmallerThanFloor,
-			expectedSmallerThanFloor,
-		)
+		require.Equal(t, 16, expectedSmallerThanFloor, "expected 16 cases where the expected cost is smaller than the floor data gas, got %d", expectedSmallerThanFloor)
 	})
 }
 
