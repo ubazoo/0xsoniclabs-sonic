@@ -26,6 +26,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/Fantom-foundation/lachesis-base/hash"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/Fantom-foundation/lachesis-base/lachesis"
 	"github.com/ethereum/go-ethereum/common"
@@ -650,4 +651,116 @@ func TestIsPermissible_DetectsNonPermissibleTransactions(t *testing.T) {
 			require.ErrorContains(t, err, test.issue)
 		})
 	}
+}
+
+func TestSpillBlockEvents(t *testing.T) {
+
+	makeEventPayload :=
+		func(gasUsed uint64, sig inter.Signature) fakePayload {
+			return fakePayload{gasUsed: gasUsed, signature: sig}
+		}
+
+	tests := map[string]struct {
+		maxBlockGas uint64
+		events      map[hash.Event]fakePayload
+		// The test uses mocks for payloads, use the signatures to uniquely identify
+		// events in the result.
+		expectedSignatures []inter.Signature
+	}{
+		"empty input returns empty set": {
+			expectedSignatures: []inter.Signature{},
+		},
+		"single event with gas usage below limit is included": {
+			maxBlockGas: 10,
+			events: map[hash.Event]fakePayload{
+				{0x42}: makeEventPayload(5, inter.Signature{0x42}),
+			},
+			expectedSignatures: []inter.Signature{{0x42}},
+		},
+		"single event with gas usage exceeding limit is spilled": {
+			maxBlockGas: 10,
+			events: map[hash.Event]fakePayload{
+				{0x42}: makeEventPayload(11, inter.Signature{0x42}),
+			},
+			expectedSignatures: []inter.Signature{},
+		},
+		"multiple events with gas usage below limit are included": {
+			maxBlockGas: 30,
+			events: map[hash.Event]fakePayload{
+				{0x42}: makeEventPayload(10, inter.Signature{0x42}),
+				{0x43}: makeEventPayload(10, inter.Signature{0x43}),
+				{0x44}: makeEventPayload(10, inter.Signature{0x44}),
+			},
+			expectedSignatures: []inter.Signature{{0x42}, {0x43}, {0x44}},
+		},
+		"multiple events with last gas usage exceeding limit are spilled": {
+			maxBlockGas: 20,
+			events: map[hash.Event]fakePayload{
+				{0x42}: makeEventPayload(1, inter.Signature{0x42}),
+				{0x43}: makeEventPayload(1, inter.Signature{0x43}),
+				{0x44}: makeEventPayload(21, inter.Signature{0x44}), // last event checked first
+			},
+			expectedSignatures: []inter.Signature{},
+		},
+		"multiple events are included until gas limit is reached, rest is spilled": {
+			maxBlockGas: 20,
+			events: map[hash.Event]fakePayload{
+				{0x42}: makeEventPayload(1, inter.Signature{0x42}),
+				{0x43}: makeEventPayload(10, inter.Signature{0x43}),
+				{0x44}: makeEventPayload(10, inter.Signature{0x44}),
+				{0x45}: makeEventPayload(10, inter.Signature{0x45}), // last event checked first
+			},
+			expectedSignatures: []inter.Signature{{0x44}, {0x45}},
+		},
+		"multiple events are included until gas limit is exceeded, rest is spilled even if they would fit independently": {
+			maxBlockGas: 20,
+			events: map[hash.Event]fakePayload{
+				{0x42}: makeEventPayload(1, inter.Signature{0x42}),
+				{0x43}: makeEventPayload(11, inter.Signature{0x43}),
+				{0x44}: makeEventPayload(10, inter.Signature{0x44}),
+			},
+			expectedSignatures: []inter.Signature{{0x44}},
+		},
+	}
+
+	for name, test := range tests {
+		t.Run(name, func(t *testing.T) {
+
+			events := make([]hash.Event, 0, len(test.events))
+			for e := range test.events {
+				events = append(events, e)
+			}
+			// tests are order-dependent, so sort inputs
+			slices.SortFunc(events, func(a, b hash.Event) int {
+				return bytes.Compare(a[:], b[:])
+			})
+
+			getEventPayload := func(id hash.Event) inter.EventPayloadI {
+				if payload, ok := test.events[id]; ok {
+					return &payload
+				}
+				return nil
+			}
+
+			computed := spillBlockEvents(events, test.maxBlockGas, getEventPayload)
+			foundSignatures := make([]inter.Signature, 0, len(computed))
+			for _, event := range computed {
+				foundSignatures = append(foundSignatures, event.Sig())
+			}
+			require.Equal(t, test.expectedSignatures, foundSignatures)
+		})
+	}
+}
+
+type fakePayload struct {
+	inter.EventPayloadI // just here to satisfy the interface
+	signature           inter.Signature
+	gasUsed             uint64
+}
+
+func (p *fakePayload) Sig() inter.Signature {
+	return p.signature
+}
+func (p *fakePayload) GasPowerUsed() uint64 {
+	return p.gasUsed
 }

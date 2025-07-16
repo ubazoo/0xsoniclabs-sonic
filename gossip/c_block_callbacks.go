@@ -175,7 +175,19 @@ func consensusCallbackBeginBlockFn(
 				// sort events by Lamport time
 				sort.Sort(confirmedEvents)
 				maxBlockGas := es.Rules.Blocks.MaxBlockGas
-				blockEvents := spillBlockEvents(store, confirmedEvents, maxBlockGas)
+				blockEvents := spillBlockEvents(confirmedEvents, maxBlockGas,
+					func(id hash.Event) inter.EventPayloadI {
+						// Note: currently, GetEventPayload returns a pointer to struct,
+						// conversion to interface may yield a broken interface if
+						// the value is nil.
+						// Adding a nil check to return a nil interface would
+						// solve that, but at this point in the code, every event
+						// must have a known payload, and getting a nil would be a
+						// critical error. We will let it panic if that happens,
+						// as there is no recovery from it.
+						return store.GetEventPayload(id)
+					},
+				)
 
 				// Start assembling the resulting block.
 				number := uint64(bs.LastBlock.Idx + 1)
@@ -208,11 +220,7 @@ func consensusCallbackBeginBlockFn(
 				}
 				var blockTime inter.Timestamp
 				if es.Rules.Upgrades.SingleProposerBlockFormation {
-					events := make([]inter.EventPayloadI, 0, blockEvents.Len())
-					for _, e := range blockEvents {
-						events = append(events, e)
-					}
-					if proposed, proposer, time := extractProposalForNextBlock(lastBlockHeader, events, log.Root()); proposed != nil {
+					if proposed, proposer, time := extractProposalForNextBlock(lastBlockHeader, blockEvents, log.Root()); proposed != nil {
 						proposal = *proposed
 						blockTime = time
 						validatorKeys := readEpochPubKeys(store, cBlock.Atropos.Epoch())
@@ -239,7 +247,7 @@ func consensusCallbackBeginBlockFn(
 					}
 				} else {
 					// Collect transactions from events and schedule them.
-					unorderedTxs := make(types.Transactions, 0, blockEvents.Len()*10)
+					unorderedTxs := make(types.Transactions, 0, len(blockEvents)*10)
 					for _, e := range blockEvents {
 						unorderedTxs = append(unorderedTxs, e.Transactions()...)
 					}
@@ -571,20 +579,20 @@ func resolveRandaoMix(
 }
 
 // spillBlockEvents excludes first events which exceed MaxBlockGas
-func spillBlockEvents(store *Store, events hash.OrderedEvents, maxBlockGas uint64) inter.EventPayloads {
-	fullEvents := make(inter.EventPayloads, len(events))
+func spillBlockEvents(
+	events hash.OrderedEvents,
+	maxBlockGas uint64,
+	getEventPayload func(id hash.Event) inter.EventPayloadI,
+) []inter.EventPayloadI {
+	fullEvents := make([]inter.EventPayloadI, len(events))
 	if len(events) == 0 {
 		return fullEvents
 	}
 	gasPowerUsedSum := uint64(0)
 	// iterate in reversed order
-	for i := len(events) - 1; ; i-- {
+	for i := len(events) - 1; i >= 0; i-- {
 		id := events[i]
-		e := store.GetEventPayload(id)
-		if e == nil {
-			log.Crit("Block event not found", "event", id.String())
-			break
-		}
+		e := getEventPayload(id)
 		fullEvents[i] = e
 		gasPowerUsedSum += e.GasPowerUsed()
 		// stop if limit is exceeded, erase [:i] events
@@ -592,9 +600,6 @@ func spillBlockEvents(store *Store, events hash.OrderedEvents, maxBlockGas uint6
 			// spill
 			spilledEventsMeter.Mark(int64(len(fullEvents) - (i + 1)))
 			fullEvents = fullEvents[i+1:]
-			break
-		}
-		if i == 0 {
 			break
 		}
 	}
