@@ -136,6 +136,9 @@ type IntegrationTestNetOptions struct {
 	ModifyConfig func(*config.Config)
 	// Accounts to be deployed with the genesis.
 	Accounts []makefakegenesis.Account
+	// SkipCleanUp indicates whether the network should add its stop function
+	// to t.Cleanup or not.
+	SkipCleanUp bool
 }
 
 // IntegrationTestNet is a in-process test network for integration tests. When
@@ -316,7 +319,9 @@ func StartIntegrationTestNetWithJsonGenesis(
 	encoded, err := json.MarshalIndent(jsonGenesis, "", "  ")
 	require.NoError(t, err, "failed to marshal genesis json")
 
-	directory := t.TempDir()
+	directory, err := os.MkdirTemp("", "TestNet")
+	require.NoError(t, err, "failed to create test directory")
+
 	jsonFile := filepath.Join(directory, "genesis.json")
 	err = os.WriteFile(jsonFile, encoded, 0644)
 	require.NoError(t, err, "failed to write genesis json file")
@@ -371,7 +376,10 @@ func startIntegrationTestNet(
 	}
 
 	require.NoError(t, net.start(), "failed to start the integration test network")
-	t.Cleanup(net.Stop)
+
+	if !options.SkipCleanUp {
+		t.Cleanup(net.Stop)
+	}
 	return net, nil
 }
 
