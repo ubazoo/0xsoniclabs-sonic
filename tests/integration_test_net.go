@@ -55,6 +55,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	geth_crypto "github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // IntegrationTestNetSession a collection of methods to run tests against the
@@ -101,7 +102,7 @@ type IntegrationTestNetSession interface {
 
 	// GetClient provides raw access to a fresh connection to the network.
 	// The resulting client must be closed after use.
-	GetClient() (*ethclient.Client, error)
+	GetClient() (*PooledEhtClient, error)
 
 	// GetChainId returns the chain ID of the network.
 	GetChainId() *big.Int
@@ -176,6 +177,8 @@ type integrationTestNode struct {
 	httpPort  int
 	shutdown  chan<- struct{}
 	done      <-chan struct{}
+
+	clients *sync.Pool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -508,6 +511,17 @@ func (n *IntegrationTestNet) start() error {
 			return fmt.Errorf("failed to parse the HTTP port %s: %w", endpoint, err)
 		}
 		n.nodes[i].httpPort = httpPort
+
+		n.nodes[i].clients = &sync.Pool{
+			New: func() any {
+				client, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[i].httpPort))
+				if err != nil {
+					return nil
+				}
+				sharedClient := PooledEhtClient{*client, n.nodes[i].clients}
+				return &sharedClient
+			},
+		}
 	}
 
 	// connect to blockchain network
@@ -566,6 +580,12 @@ func (n *IntegrationTestNet) Stop() {
 		<-n.nodes[i].done
 		n.nodes[i].done = nil
 	}
+
+	// release clients pools
+	for i := range n.nodes {
+		n.nodes[i].clients = nil
+	}
+
 }
 
 // Restart stops and restarts the single node on the test network.
@@ -581,7 +601,7 @@ func (n *IntegrationTestNet) NumNodes() int {
 
 // GetClient provides raw access to a fresh connection to the network.
 // The resulting client must be closed after use.
-func (n *IntegrationTestNet) GetClient() (*ethclient.Client, error) {
+func (n *IntegrationTestNet) GetClient() (*PooledEhtClient, error) {
 	return n.GetClientConnectedToNode(0)
 }
 
@@ -592,11 +612,19 @@ func (n *IntegrationTestNet) GetChainId() *big.Int {
 
 // GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
 // the network. The resulting client must be closed after use.
-func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*ethclient.Client, error) {
+func (n *IntegrationTestNet) GetClientConnectedToNode(i int) (*PooledEhtClient, error) {
 	if i < 0 || i >= len(n.nodes) {
 		return nil, fmt.Errorf("node index out of bounds: %d", i)
 	}
-	return ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[i].httpPort))
+	client := n.nodes[i].clients.Get().(*PooledEhtClient)
+	if client != nil {
+		return client, nil
+	}
+	ethclient, err := ethclient.Dial(fmt.Sprintf("http://localhost:%d", n.nodes[i].httpPort))
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
+	}
+	return &PooledEhtClient{*ethclient, n.nodes[i].clients}, nil
 }
 
 // GetWebSocketClient provides raw access to a fresh connection to the network
@@ -719,7 +747,6 @@ func (n *IntegrationTestNet) SpawnSession(t *testing.T) IntegrationTestNetSessio
 // The contract is deployed with by the network's validator account. The function returns the
 // deployed contract instance and the transaction receipt.
 func DeployContract[T any](n IntegrationTestNetSession, deploy contractDeployer[T]) (*T, *types.Receipt, error) {
-
 	client, err := n.GetClient()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to connect to the Ethereum client: %w", err)
@@ -840,7 +867,7 @@ func (s *Session) Run(tx *types.Transaction) (*types.Receipt, error) {
 
 func (s *Session) RunAll(tx []*types.Transaction) ([]*types.Receipt, error) {
 	hashes := make([]common.Hash, len(tx))
-	err := runParallelWithClient(s.net, len(tx), func(client *ethclient.Client, i int) error {
+	err := runParallelWithClient(s.net, len(tx), func(client *PooledEhtClient, i int) error {
 		err := client.SendTransaction(context.Background(), tx[i])
 		if err != nil {
 			return fmt.Errorf("failed to send transaction %d: %w", i, err)
@@ -872,7 +899,7 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 	err := runParallelWithClient(
 		s.net,
 		len(txHash),
-		func(client *ethclient.Client, i int) error {
+		func(client *PooledEhtClient, i int) error {
 			hash := txHash[i]
 			// Wait for the response with some exponential backoff.
 			const maxDelay = 100 * time.Millisecond
@@ -908,7 +935,7 @@ func (s *Session) GetReceipts(txHash []common.Hash) ([]*types.Receipt, error) {
 func runParallelWithClient(
 	net IntegrationTestNetSession,
 	numJobs int,
-	job func(*ethclient.Client, int) error,
+	job func(*PooledEhtClient, int) error,
 ) error {
 	numWorkers := max(min(numJobs, 16), 1)
 	var wg sync.WaitGroup
@@ -1009,15 +1036,15 @@ func (s *Session) GetChainId() *big.Int {
 	return s.net.GetChainId()
 }
 
-// GetClient provides raw access to a fresh connection to the network.
+// GetClient provides raw access to a fresh connection to node zero on the network.
 // The resulting client must be closed after use.
-func (s *Session) GetClient() (*ethclient.Client, error) {
-	return s.GetClientConnectedToNode(0)
+func (s *Session) GetClient() (*PooledEhtClient, error) {
+	return s.net.GetClientConnectedToNode(0)
 }
 
 // GetClientConnectedToNode provides raw access to a fresh connection to a selected node on
 // the network. The resulting client must be closed after use.
-func (s *Session) GetClientConnectedToNode(i int) (*ethclient.Client, error) {
+func (s *Session) GetClientConnectedToNode(i int) (*PooledEhtClient, error) {
 	return s.net.GetClientConnectedToNode(i)
 }
 
@@ -1028,7 +1055,6 @@ func (s *Session) AdvanceEpoch(epochs int) error {
 	if err != nil {
 		return fmt.Errorf("failed to connect to the client: %w", err)
 	}
-	defer client.Close()
 
 	var currentEpoch hexutil.Uint64
 	if err := client.Client().Call(&currentEpoch, "eth_currentEpoch"); err != nil {
@@ -1100,4 +1126,31 @@ func isDataRaceDetectionEnabled() bool {
 		}
 	}
 	return false
+}
+
+// ethClient is an alias for ethclient.Client to avoid name conflicts with
+// the method `.Client()` of the type PooledEhtClient.
+type ethClient = ethclient.Client
+
+// PooledEhtClient is a wrapper around ethClient that provides a Close method
+// that returns the client to the shared client pool.
+type PooledEhtClient struct {
+	ethClient
+	// Each shared client needs to know to which pool it has to return.
+	// Keeping a reference to the pool allows the shared client to be compliant
+	// with the ethclient.Client close signature.
+	pool *sync.Pool
+}
+
+// Close returns the shared client to the pool it was generated from.
+func (s *PooledEhtClient) Close() {
+	if s.pool == nil {
+		return
+	}
+	s.pool.Put(s)
+}
+
+// Client provides access to the underlying RPC Client.
+func (s *PooledEhtClient) Client() *rpc.Client {
+	return s.ethClient.Client()
 }

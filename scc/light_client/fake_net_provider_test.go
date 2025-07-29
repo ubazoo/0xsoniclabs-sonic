@@ -25,7 +25,6 @@ import (
 	"github.com/0xsoniclabs/sonic/tests"
 	"github.com/Fantom-foundation/lachesis-base/inter/idx"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
 )
@@ -43,7 +42,7 @@ func TestServer_GetCommitteeCertificates_CanRetrieveCertificates(t *testing.T) {
 	net, client := startNetAndGetClient(t)
 
 	// make providers
-	providerFromClient, err := newServerFromClient(client.Client())
+	providerFromClient, err := newServerFromClient(client)
 	require.NoError(err)
 	t.Cleanup(providerFromClient.close)
 	url := fmt.Sprintf("http://localhost:%d", net.GetJsonRpcPort())
@@ -51,7 +50,7 @@ func TestServer_GetCommitteeCertificates_CanRetrieveCertificates(t *testing.T) {
 	require.NoError(err)
 	t.Cleanup(providerFromURL.close)
 
-	chainId := getChainIdFromClient(t, client.Client())
+	chainId := getChainIdFromClient(t, client)
 
 	for _, provider := range []*server{providerFromClient, providerFromURL} {
 
@@ -73,7 +72,7 @@ func TestServer_GetBlockCertificates_CanRetrieveCertificates(t *testing.T) {
 	net, client := startNetAndGetClient(t)
 
 	// make providers
-	providerFromClient, err := newServerFromClient(client.Client())
+	providerFromClient, err := newServerFromClient(client)
 	require.NoError(err)
 	t.Cleanup(providerFromClient.close)
 	url := fmt.Sprintf("http://localhost:%d", net.GetJsonRpcPort())
@@ -81,7 +80,7 @@ func TestServer_GetBlockCertificates_CanRetrieveCertificates(t *testing.T) {
 	require.NoError(err)
 	t.Cleanup(providerFromURL.close)
 
-	chainId := getChainIdFromClient(t, client.Client())
+	chainId := getChainIdFromClient(t, client)
 
 	for _, provider := range []*server{providerFromClient, providerFromURL} {
 
@@ -114,7 +113,7 @@ func TestServer_CanRequestMaxNumberOfResults(t *testing.T) {
 	net, client := startNetAndGetClient(t)
 
 	// make providers
-	providerFromClient, err := newServerFromClient(client.Client())
+	providerFromClient, err := newServerFromClient(client)
 	require.NoError(err)
 	t.Cleanup(providerFromClient.close)
 	url := fmt.Sprintf("http://localhost:%d", net.GetJsonRpcPort())
@@ -137,7 +136,7 @@ func TestServer_CanRequestMaxNumberOfResults(t *testing.T) {
 // helper functions
 ////////////////////////////////////////
 
-func startNetAndGetClient(t *testing.T) (*tests.IntegrationTestNet, *ethclient.Client) {
+func startNetAndGetClient(t *testing.T) (*tests.IntegrationTestNet, *rpc.Client) {
 	t.Helper()
 	require := require.New(t)
 	// start network
@@ -145,7 +144,7 @@ func startNetAndGetClient(t *testing.T) (*tests.IntegrationTestNet, *ethclient.C
 
 	client, err := net.GetClient()
 	require.NoError(err)
-	return net, client
+	return net, client.Client()
 }
 
 func getChainIdFromClient(t *testing.T, client *rpc.Client) *big.Int {
