@@ -110,6 +110,11 @@ type IntegrationTestNetSession interface {
 	// AdvanceEpoch sends a transaction to advance to the next epoch.
 	// It also waits until the new epoch is really reached.
 	AdvanceEpoch(epochs int) error
+
+	// SpawnSession creates a new test session on the network based from the
+	// network's sponsor account. This should be done before entering a new
+	// parallel context to prevent conflicting nonces inside.
+	SpawnSession(t *testing.T) IntegrationTestNetSession
 }
 
 // AsPointer is a utility function that returns a pointer to the given value.
@@ -788,6 +793,10 @@ type contractDeployer[T any] func(*bind.TransactOpts, bind.ContractBackend) (com
 type Session struct {
 	net     *IntegrationTestNet
 	account Account
+}
+
+func (s *Session) SpawnSession(t *testing.T) IntegrationTestNetSession {
+	return s.net.SpawnSession(t)
 }
 
 func (s *Session) GetUpgrades() opera.Upgrades {
