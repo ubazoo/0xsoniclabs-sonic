@@ -284,7 +284,7 @@ func TestEstimateGas(t *testing.T) {
 
 	api := NewPublicBlockChainAPI(mockBackend)
 
-	gas, err := api.EstimateGas(context.Background(), getTxArgs(t), &blkNr)
+	gas, err := api.EstimateGas(context.Background(), getTxArgs(t), &blkNr, nil, nil)
 	require.NoError(t, err, "failed to estimate gas")
 	require.Greater(t, gas, uint64(0))
 }
@@ -404,6 +404,7 @@ func TestBlockOverrides(t *testing.T) {
 	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
 	mockBackend.EXPECT().ChainConfig(gomock.Any()).Return(&params.ChainConfig{}).AnyTimes()
 	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
+	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000)).AnyTimes()
 	setExpectedStateCalls(mockState)
 
 	expectedBlockCtx := &vm.BlockContext{
@@ -428,15 +429,149 @@ func TestBlockOverrides(t *testing.T) {
 		BlockOverrides: blockOverrides,
 	}
 
-	_, err := apiDebug.TraceCall(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr)), traceConfig)
+	rpcBlkNr := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr))
+
+	_, err := apiDebug.TraceCall(context.Background(), getTxArgs(t), rpcBlkNr, traceConfig)
 	require.NoError(t, err, "debug api must be able to override block number and base fee")
 
-	// Check block overrides on eth api with eth_call rpc function
+	// Check block overrides on eth api with eth_call and eth_estimateGas rpc function
 	apiEth := NewPublicBlockChainAPI(mockBackend)
 
-	_, err = apiEth.Call(context.Background(), getTxArgs(t), rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr)), nil, blockOverrides)
+	_, err = apiEth.Call(context.Background(), getTxArgs(t), rpcBlkNr, nil, blockOverrides)
 	require.NoError(t, err, "debug api must be able to override block number and base fee")
 
+	_, err = apiEth.EstimateGas(context.Background(), getTxArgs(t), &rpcBlkNr, nil, blockOverrides)
+	require.NoError(t, err, "estimate gas must be able to override block number and base fee")
+}
+
+type stateOverrideEstimateGasTest struct {
+	name          string
+	stateOverride *StateOverride
+	expectedGas   hexutil.Uint64
+	err           bool
+}
+
+func TestEstimateGasStateOverride(t *testing.T) {
+
+	address := common.Address{1}
+	balance := (*hexutil.U256)(uint256.NewInt(123456789))
+	// Estimated gas
+	gas := 21272
+
+	tests := []stateOverrideEstimateGasTest{
+		{
+			name:          "no state override",
+			stateOverride: nil,
+			expectedGas:   hexutil.Uint64(gas),
+			err:           false,
+		},
+		{
+			name: "state override with state",
+			stateOverride: &StateOverride{
+				address: OverrideAccount{
+					Nonce:   new(hexutil.Uint64),
+					Code:    (*hexutil.Bytes)(new([]byte)),
+					Balance: &balance,
+					State: &map[common.Hash]common.Hash{
+						common.HexToHash("0x00"): common.HexToHash("0x01"),
+					},
+				},
+			},
+			expectedGas: hexutil.Uint64(gas),
+			err:         false,
+		},
+		{
+			name: "state override with state diff",
+			stateOverride: &StateOverride{
+				address: OverrideAccount{
+					Nonce:   (*hexutil.Uint64)(new(uint64)),
+					Code:    (*hexutil.Bytes)(new([]byte)),
+					Balance: &balance,
+					StateDiff: &map[common.Hash]common.Hash{
+						common.HexToHash("0x02"): common.HexToHash("0x03"),
+					},
+				},
+			},
+			expectedGas: hexutil.Uint64(gas),
+			err:         false,
+		},
+		{
+			name: "state override with state and state diff",
+			stateOverride: &StateOverride{
+				address: OverrideAccount{
+					Nonce:   new(hexutil.Uint64),
+					Code:    (*hexutil.Bytes)(new([]byte)),
+					Balance: &balance,
+					State: &map[common.Hash]common.Hash{
+						common.HexToHash("0x00"): common.HexToHash("0x01"),
+					},
+					StateDiff: &map[common.Hash]common.Hash{
+						common.HexToHash("0x02"): common.HexToHash("0x03"),
+					},
+				},
+			},
+			expectedGas: hexutil.Uint64(0),
+			err:         true,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			runEstimateGasOverrideTest(t, test)
+		})
+	}
+}
+
+func runEstimateGasOverrideTest(t *testing.T, test stateOverrideEstimateGasTest) {
+
+	// Setup backend and state mocks
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockBackend := NewMockBackend(ctrl)
+	mockState := state.NewMockStateDB(ctrl)
+
+	blockNr := 10
+	block := &evmcore.EvmBlock{}
+	block.Number = big.NewInt(int64(blockNr))
+	rpcBlkNr := rpc.BlockNumberOrHashWithNumber(rpc.BlockNumber(blockNr))
+
+	any := gomock.Any()
+	mockBackend.EXPECT().BlockByNumber(any, any).Return(block, nil).AnyTimes()
+	mockBackend.EXPECT().GetNetworkRules(any, any).Return(&opera.Rules{}, nil).AnyTimes()
+	mockBackend.EXPECT().StateAndHeaderByNumberOrHash(any, any).Return(mockState, &evmcore.EvmHeader{Number: big.NewInt(int64(blockNr))}, nil).AnyTimes()
+	mockBackend.EXPECT().RPCGasCap().Return(uint64(10000000)).AnyTimes()
+	mockBackend.EXPECT().ChainConfig(any).Return(&params.ChainConfig{}).AnyTimes()
+	mockBackend.EXPECT().RPCEVMTimeout().Return(time.Duration(0)).AnyTimes()
+	mockBackend.EXPECT().MaxGasLimit().Return(uint64(10000000)).AnyTimes()
+	mockBackend.EXPECT().GetEVM(any, any, any, any, any).DoAndReturn(getEvmFunc(mockState)).AnyTimes()
+	mockBackend.EXPECT().CurrentBlock().Return(block).AnyTimes()
+	mockBackend.EXPECT().SuggestGasTipCap(any, any).Return(big.NewInt(1)).AnyTimes()
+	mockBackend.EXPECT().MinGasPrice().Return(big.NewInt(0)).AnyTimes()
+	mockBackend.EXPECT().GetPoolNonce(any, any).Return(uint64(0), nil).AnyTimes()
+
+	mockState.EXPECT().GetBalance(any).Return(uint256.NewInt(12345678901234567890)).AnyTimes()
+	mockState.EXPECT().SetCode(any, any).AnyTimes()
+	mockState.EXPECT().SetBalance(any, any).AnyTimes()
+	mockState.EXPECT().SetStorage(any, any).AnyTimes()
+	mockState.EXPECT().SetState(any, any, any).AnyTimes()
+	setExpectedStateCalls(mockState)
+
+	mockBackend.EXPECT().ChainID().Return(big.NewInt(1)).AnyTimes()
+
+	txArgs := getTxArgs(t)
+	err := txArgs.setDefaults(t.Context(), mockBackend)
+	require.NoError(t, err)
+
+	// Run estimation test
+	apiEth := NewPublicBlockChainAPI(mockBackend)
+	gas, err := apiEth.EstimateGas(context.Background(), txArgs, &rpcBlkNr, test.stateOverride, nil)
+	if test.err {
+		require.Error(t, err)
+	} else {
+		require.NoError(t, err)
+	}
+	require.Equal(t, test.expectedGas, gas)
 }
 
 func TestGetTransactionReceiptReturnsNilNotError(t *testing.T) {
@@ -466,6 +601,9 @@ type BlockContextMatcher struct {
 
 func (m BlockContextMatcher) Matches(x interface{}) bool {
 	if bc, ok := x.(*vm.BlockContext); ok {
+		if bc == nil {
+			return true
+		}
 		bcCopy := *bc
 		bcCopy.Transfer = nil
 		bcCopy.CanTransfer = nil
