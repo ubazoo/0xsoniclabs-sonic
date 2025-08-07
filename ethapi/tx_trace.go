@@ -122,33 +122,23 @@ func (s *PublicTxTraceAPI) Call(ctx context.Context, args TransactionArgs, trace
 // Block - trace_block function returns transaction traces in given block
 func (s *PublicTxTraceAPI) Block(ctx context.Context, numberOrHash rpc.BlockNumberOrHash) (*[]txtrace.ActionTrace, error) {
 
-	blockNumber, _ := numberOrHash.Number()
-
-	if blockNumber == rpc.PendingBlockNumber {
-		return nil, fmt.Errorf("cannot trace pending block")
-	}
-
-	currentBlockNumber := s.b.CurrentBlock().NumberU64()
-	if blockNumber == rpc.LatestBlockNumber {
-		blockNumber = rpc.BlockNumber(currentBlockNumber)
-	}
-
-	if uint64(blockNumber.Int64()) > currentBlockNumber {
-		return nil, fmt.Errorf("requested block number %v is greater than current head block number %v", blockNumber.Int64(), currentBlockNumber)
+	blockNumber, err := s.b.ResolveRpcBlockNumberOrHash(ctx, numberOrHash)
+	if err != nil {
+		return nil, err
 	}
 
 	defer func(start time.Time) {
-		log.Debug("Executing trace_block call finished", "block", blockNumber.Int64(), "runtime", time.Since(start))
+		log.Debug("Executing trace_block call finished", "block", blockNumber, "runtime", time.Since(start))
 	}(time.Now())
 
-	block, err := s.b.BlockByNumber(ctx, blockNumber)
+	block, err := s.b.BlockByNumber(ctx, rpc.BlockNumber(blockNumber))
 	if err != nil {
-		return nil, fmt.Errorf("cannot get block %v from db got %v", blockNumber.Int64(), err.Error())
+		return nil, fmt.Errorf("cannot get block %v from db got %v", blockNumber, err.Error())
 	}
 
 	traces, err := s.replayBlock(ctx, block, nil, nil)
 	if err != nil {
-		return nil, fmt.Errorf("cannot trace block %v got %v", blockNumber.Int64(), err.Error())
+		return nil, fmt.Errorf("cannot trace block %v got %v", blockNumber, err.Error())
 	}
 
 	return traces, nil
@@ -428,7 +418,10 @@ func filterBlocks(ctx context.Context, s *PublicTxTraceAPI, args FilterArgs) (js
 	}
 
 	// parse arguments
-	fromBlock, toBlock, fromAddresses, toAddresses := parseFilterArguments(s.b, args)
+	fromBlock, toBlock, fromAddresses, toAddresses, err := parseFilterArguments(s.b, args)
+	if err != nil {
+		return nil, err
+	}
 
 	// loop trhu all blocks
 	for i := fromBlock; i <= toBlock; i++ {
@@ -470,7 +463,10 @@ func filterBlocksInParallel(ctx context.Context, s *PublicTxTraceAPI, args Filte
 		return nil, err
 	}
 	// parse arguments
-	fromBlock, toBlock, fromAddresses, toAddresses := parseFilterArguments(s.b, args)
+	fromBlock, toBlock, fromAddresses, toAddresses, err := parseFilterArguments(s.b, args)
+	if err != nil {
+		return nil, err
+	}
 	// add context cancel function
 	ctx, cancelFunc := context.WithCancelCause(ctx)
 
@@ -550,22 +546,24 @@ func addBlocksForProcessing(ctx context.Context, fromBlock rpc.BlockNumber, toBl
 }
 
 // Parses rpc call arguments
-func parseFilterArguments(b Backend, args FilterArgs) (fromBlock rpc.BlockNumber, toBlock rpc.BlockNumber, fromAddresses map[common.Address]struct{}, toAddresses map[common.Address]struct{}) {
+func parseFilterArguments(b Backend, args FilterArgs) (fromBlock rpc.BlockNumber, toBlock rpc.BlockNumber, fromAddresses map[common.Address]struct{}, toAddresses map[common.Address]struct{}, err error) {
 
 	blockHead := rpc.BlockNumber(b.CurrentBlock().NumberU64())
 
 	if args.FromBlock != nil {
-		fromBlock = *args.FromBlock.BlockNumber
-		if fromBlock == rpc.LatestBlockNumber || fromBlock == rpc.PendingBlockNumber {
-			fromBlock = blockHead
+		blockNumber, err := b.ResolveRpcBlockNumberOrHash(context.Background(), rpc.BlockNumberOrHashWithNumber(*args.FromBlock.BlockNumber))
+		if err != nil {
+			return 0, 0, nil, nil, err
 		}
+		fromBlock = rpc.BlockNumber(blockNumber)
 	}
 
 	if args.ToBlock != nil {
-		toBlock = *args.ToBlock.BlockNumber
-		if toBlock == rpc.LatestBlockNumber || toBlock == rpc.PendingBlockNumber {
-			toBlock = blockHead
+		blockNumber, err := b.ResolveRpcBlockNumberOrHash(context.Background(), rpc.BlockNumberOrHashWithNumber(*args.ToBlock.BlockNumber))
+		if err != nil {
+			return 0, 0, nil, nil, err
 		}
+		toBlock = rpc.BlockNumber(blockNumber)
 	} else {
 		toBlock = blockHead
 	}
@@ -582,7 +580,7 @@ func parseFilterArguments(b Backend, args FilterArgs) (fromBlock rpc.BlockNumber
 			toAddresses[addr] = struct{}{}
 		}
 	}
-	return fromBlock, toBlock, fromAddresses, toAddresses
+	return fromBlock, toBlock, fromAddresses, toAddresses, nil
 }
 
 type traceWorkerResult struct {
