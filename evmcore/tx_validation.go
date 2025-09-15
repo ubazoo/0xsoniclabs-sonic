@@ -42,6 +42,7 @@ type poolOptions struct {
 type NetworkRules struct {
 	istanbul bool // Fork indicator whether we are in the istanbul revision.
 	shanghai bool // Fork indicator whether we are in the shanghai revision.
+	osaka    bool // Fork indicator whether we are in the osaka revision.
 
 	eip2718 bool // Fork indicator whether we are using EIP-2718 type transactions.
 	eip1559 bool // Fork indicator whether we are using EIP-1559 type transactions.
@@ -50,6 +51,8 @@ type NetworkRules struct {
 	eip7702 bool // Fork indicator whether we are using EIP-7702 set code transactions.
 
 	signer types.Signer // Signer to use for transaction validation
+
+	maxTxGas uint64 // Maximum gas allowed per transaction
 }
 
 // blockState is a set of options to adjust the validation of transactions
@@ -167,6 +170,10 @@ func ValidateTxForNetwork(tx *types.Transaction, opt NetworkRules) error {
 		if tx.Gas() < floorDataGas {
 			return fmt.Errorf("%w: have %d, want %d", ErrFloorDataGas, tx.Gas(), floorDataGas)
 		}
+	}
+
+	if opt.osaka && tx.Gas() > opt.maxTxGas {
+		return fmt.Errorf("%w: tx gas %v, should be under %v", ErrGasLimitTooHigh, tx.Gas(), opt.maxTxGas)
 	}
 
 	if _, err := types.Sender(opt.signer, tx); err != nil {
