@@ -22,6 +22,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
 	"github.com/0xsoniclabs/sonic/opera"
@@ -219,6 +220,67 @@ func TestNetworkRule_Update_Restart_Recovers_Original_Value(t *testing.T) {
 	require.NoError(err)
 
 	require.GreaterOrEqual(blockAfter.BaseFee().Int64(), newMinBaseFee, "BaseFee should reflect new MinBaseFee")
+}
+
+func TestNetworkRules_UpdateMaxEventGas_DropsLargeGasTxs(t *testing.T) {
+	t.Parallel()
+
+	require := require.New(t)
+	net := tests.StartIntegrationTestNetWithFakeGenesis(t,
+		tests.IntegrationTestNetOptions{
+			Upgrades: tests.AsPointer(opera.GetAllegroUpgrades()),
+		})
+
+	client, err := net.GetClient()
+	require.NoError(err)
+	defer client.Close()
+
+	newAccount := tests.MakeAccountWithBalance(t, net, big.NewInt(1e18))
+
+	// make a transaction with over 20M gas
+	tx := tests.CreateTransaction(t, net, &types.LegacyTx{
+		To:    &common.Address{1},
+		Gas:   21_000_000,
+		Nonce: 1, // High nonce that cannot be executed yet but will not be dropped from the txpool
+	}, newAccount)
+
+	err = client.SendTransaction(t.Context(), tx)
+	require.NoError(err, "failed to send high gas transaction")
+
+	var content map[string]map[string]map[string]*ethapi.RPCTransaction
+	err = client.Client().Call(&content, "txpool_content")
+	require.NoError(err, "failed to get tx pool status")
+	require.Equal(1, len(content["queued"]), "expected the high gas tx to be in the queued section of the tx pool")
+
+	type rulesType struct {
+		Economy  struct{ Gas opera.GasRules }
+		Upgrades struct{ Brio bool }
+	}
+
+	var originalRules rulesType
+	err = client.Client().Call(&originalRules, "eth_getRules", "latest")
+	require.NoError(err)
+	require.NotNil(originalRules.Economy.Gas, "GasRules should be filled")
+	require.NotEqual(0, originalRules.Economy.Gas.MaxEventGas, "GasRules should be filled")
+
+	updatedRules := originalRules
+	defaultGasRules := opera.DefaultGasRules()
+	defaultGasRules.MaxEventGas = 16_777_216 // inspired by params.MaxTxGas
+	updatedRules.Economy.Gas = defaultGasRules
+
+	// Update network rules
+	tests.UpdateNetworkRules(t, net, updatedRules)
+
+	err = client.Client().Call(&content, "txpool_content")
+	require.NoError(err, "failed to get tx pool status")
+	require.Equal(1, len(content["queued"]), "expected the high gas tx to be in the queued section of the tx pool")
+
+	// reach epoch ceiling to apply the new rules
+	tests.AdvanceEpochAndWaitForBlocks(t, net)
+
+	err = client.Client().Call(&content, "txpool_content")
+	require.NoError(err, "failed to get tx pool status")
+	require.Equal(0, len(content["queued"]))
 }
 
 func TestNetworkRule_MinEventGas_AllowsChangingRules(t *testing.T) {
