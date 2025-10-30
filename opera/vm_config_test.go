@@ -39,3 +39,36 @@ func TestGetVmConfig_SingleProposerModeDisablesExcessGasCharging(t *testing.T) {
 		})
 	}
 }
+
+func TestGetVmConfig_NonBrioUpgrade_DoesNotSetMaxTxGas(t *testing.T) {
+
+	rules := Rules{
+		Upgrades: Upgrades{
+			Brio: false,
+		},
+	}
+
+	vmConfig := GetVmConfig(rules)
+
+	require.Nil(t, vmConfig.MaxTxGas)
+}
+
+func TestGetVmConfig_BrioUpgrade_CopiesMaxEventGasValue(t *testing.T) {
+	want := uint64(123456)
+	rules := Rules{
+		Upgrades: Upgrades{
+			Brio: true,
+		},
+		Economy: EconomyRules{
+			Gas: GasRules{
+				MaxEventGas: want,
+			},
+		},
+	}
+
+	vmConfig := GetVmConfig(rules)
+
+	require.NotNil(t, vmConfig.MaxTxGas)
+	require.Equal(t, want, *vmConfig.MaxTxGas)
+	require.False(t, &rules.Economy.Gas.MaxEventGas == vmConfig.MaxTxGas)
+}

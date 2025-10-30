@@ -89,6 +89,10 @@ type GasPowerRules struct {
 }
 
 type GasRulesRLPV1 struct {
+	// MaxEventGas is used as the maximum gas that can be used in a single event.
+	// From Brio and later upgrades this is also used to limit the maximum gas
+	// that can be used in a single transaction.
+	// This is how Sonic implements a limit analogous to EIP-7825.
 	MaxEventGas  uint64
 	EventGas     uint64
 	ParentGas    uint64
