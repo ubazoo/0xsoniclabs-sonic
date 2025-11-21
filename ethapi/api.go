@@ -713,6 +713,84 @@ func (s *PublicBlockChainAPI) GetBalance(ctx context.Context, address common.Add
 	return (*hexutil.U256)(state.GetBalance(address)), state.Error()
 }
 
+// configResponse is the response structure for the Config method as
+// described by https://eips.ethereum.org/EIPS/eip-7910
+type configResponse struct {
+	// current is the config active at the latest block number.
+	Current *config `json:"current"`
+	// Next will remain nil since Sonic config activation does not depend on time.
+	Next *config `json:"next"`
+	// Last is the config active before the current one and could be nil if only one upgrades heights exists.
+	Last *config `json:"last"`
+}
+
+// config as described by https://eips.ethereum.org/EIPS/eip-7910
+type config struct {
+	// ActivationTime is the timestamp of the first block where this config is active.
+	ActivationTime uint64 `json:"activationTime"`
+	// BlobSchedule will remain nil because in Sonic this is not relevant
+	BlobSchedule *params.BlobConfig `json:"blobSchedule"`
+
+	ChainId *hexutil.Big `json:"chainId"`
+
+	// ForkId provides an identity scheme to both precisely and concisely
+	// summarize the chain's current status. Both regarding its genesis
+	// configuration and the last upgrade in use.
+	// ForkId is derived with this formula
+	// CRC32(genesisId || bigEndian(upgrade.Height) || Rlp(upgrade))
+	ForkId hexutil.Bytes `json:"forkId"`
+
+	Precompiles     contractRegistry `json:"precompiles"`
+	SystemContracts contractRegistry `json:"systemContracts"`
+}
+
+// helper types to improve readability of the returned structure.
+type contractRegistry map[string]common.Address
+
+// Config returns the current and previous (if any) network configs following the structure
+// described in https://eips.ethereum.org/EIPS/eip-7910.
+//
+// In Sonic, config changes are based on block heights (upgrade heights) rather than
+// activation times. Therefore, the "Next" config is always nil, as there is no time-based
+// activation. The "Current" config corresponds to the config active at the current block,
+// and the "Last" config (if available) corresponds to the config active before the current one.
+//
+// BlobSchedule field is not relevant in Sonic, hence is always nil.
+func (s *PublicBlockChainAPI) Config(ctx context.Context) (*configResponse, error) {
+
+	currentHeader := s.b.CurrentBlock().Header()
+	if currentHeader == nil {
+		return nil, errors.New("current block header not found")
+	}
+
+	updateHeights := s.b.GetUpgradeHeights()
+	if len(updateHeights) == 0 {
+		return nil, errors.New("no configs found")
+	}
+
+	currentUpgradeHeight := updateHeights[len(updateHeights)-1]
+	current, err := makeConfigFromUpgrade(ctx, s.b, currentUpgradeHeight)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get current config, %w", err)
+	}
+
+	// if there is an older config, make it too
+	var last *config
+	lenHeights := len(updateHeights)
+	if lenHeights > 1 {
+		lastUpgradeHeight := updateHeights[lenHeights-2]
+		last, err = makeConfigFromUpgrade(ctx, s.b, lastUpgradeHeight)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get previous config, %w", err)
+		}
+	}
+
+	return &configResponse{
+		Current: current,
+		Last:    last,
+	}, nil
+}
+
 // GetAccountResult is result struct for GetAccount.
 // The result contains:
 // 1) CodeHash - hash of the code for the given address

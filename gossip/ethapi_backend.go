@@ -92,6 +92,10 @@ func (b *EthAPIBackend) CurrentBlock() *evmcore.EvmBlock {
 	return b.state.CurrentBlock()
 }
 
+func (b *EthAPIBackend) GetGenesisID() common.Hash {
+	return (common.Hash)(b.svc.store.GetGenesisID())
+}
+
 // HistoryPruningCutoff returns the block height at which pruning was done.
 func (b *EthAPIBackend) HistoryPruningCutoff() uint64 {
 	return 0
@@ -634,4 +638,8 @@ func (b *EthAPIBackend) GetLatestBlockCertificate() (cert.BlockCertificate, erro
 
 func (b *EthAPIBackend) EnumerateBlockCertificates(first idx.Block) iter.Seq[result.T[cert.BlockCertificate]] {
 	return b.svc.store.EnumerateBlockCertificates(first)
+}
+
+func (b *EthAPIBackend) GetUpgradeHeights() []opera.UpgradeHeight {
+	return b.svc.store.GetUpgradeHeights()
 }
