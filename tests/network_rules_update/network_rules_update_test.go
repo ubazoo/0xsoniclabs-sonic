@@ -25,9 +25,11 @@ import (
 	"github.com/0xsoniclabs/sonic/ethapi"
 	"github.com/0xsoniclabs/sonic/evmcore"
 	"github.com/0xsoniclabs/sonic/gossip/contract/driverauth100"
+	"github.com/0xsoniclabs/sonic/integration/makefakegenesis"
 	"github.com/0xsoniclabs/sonic/opera"
 	"github.com/0xsoniclabs/sonic/opera/contracts/driverauth"
 	"github.com/0xsoniclabs/sonic/tests"
+	"github.com/0xsoniclabs/tosca/go/tosca/vm"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -421,4 +423,65 @@ func makeSetCodeTx(
 		AuthList: []types.SetCodeAuthorization{authorization},
 	}
 	return tests.CreateTransaction(t, net, txData, account)
+}
+
+func TestNetworkRulesUpdate_BrioFeaturesBecomeAvailable_WhenBrioUpgradesEnabled(t *testing.T) {
+	// This Test verifies that the Brio upgrade features (namely CLZ opcode)
+	// become available when the Brio upgrade is enabled via network rules update.
+
+	code := []byte{
+		byte(vm.PUSH1), 0x00, // constant input for CLZ
+		byte(vm.CLZ),  // count leading zeros
+		byte(vm.STOP), // stop
+	}
+
+	address := common.HexToAddress("0x42")
+	net := tests.StartIntegrationTestNet(t,
+		tests.IntegrationTestNetOptions{
+			Upgrades: tests.AsPointer(opera.GetSonicUpgrades()),
+			Accounts: []makefakegenesis.Account{{
+				Name:    "account",
+				Address: address,
+				Code:    code,
+			}},
+		},
+	)
+
+	client, err := net.GetClient()
+	require.NoError(t, err)
+	defer client.Close()
+
+	// get current network rules
+	var rules opera.Rules
+	err = client.Client().Call(&rules, "eth_getRules", "latest")
+	require.NoError(t, err)
+	require.False(t, rules.Upgrades.Brio, "Brio upgrade should be disabled initially")
+
+	// needs to be a slice to ensure the order of tests cases since upgrade updating is stateful
+	upgrades := []opera.Upgrades{
+		opera.GetSonicUpgrades(),
+		opera.GetAllegroUpgrades(),
+		opera.GetBrioUpgrades(),
+	}
+
+	for _, upgrade := range upgrades {
+		// update network
+		rules.Upgrades = upgrade
+		tests.UpdateNetworkRules(t, net, rules)
+		// reach epoch ceiling to apply the new rules
+		tests.AdvanceEpochAndWaitForBlocks(t, net)
+
+		txData := &types.LegacyTx{
+			Gas: 58_000,
+			To:  &address,
+		}
+		tx := tests.CreateTransaction(t, net, txData, net.GetSessionSponsor())
+		receipt, err := net.Run(tx)
+		require.NoError(t, err)
+		if !upgrade.Brio {
+			require.Equal(t, types.ReceiptStatusFailed, receipt.Status)
+		} else {
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		}
+	}
 }
