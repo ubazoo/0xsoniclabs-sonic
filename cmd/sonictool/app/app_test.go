@@ -157,7 +157,38 @@ func TestSonicTool_account_ExecutesWithoutErrors(t *testing.T) {
 	require.Len(t, accounts, 2)
 }
 
-func TestSonicTool_genesis_ExecutesWithoutErrors(t *testing.T) {
+func TestSonicTool_genesis_CreatesDataDirWithAllowedUpgrades(t *testing.T) {
+
+	upgrades := []string{
+		"sonic",
+		"allegro",
+		"brio",
+	}
+
+	for _, upgradeName := range upgrades {
+		t.Run(upgradeName, func(t *testing.T) {
+			datadir := t.TempDir()
+
+			_, err := executeSonicTool(t,
+				"--datadir", datadir,
+				"genesis", "fake",
+				"--upgrades", upgradeName,
+				"10")
+			require.NoError(t, err)
+		})
+	}
+}
+
+func TestSonicTool_genesis_ReturnsErrorIfHardforkIsInvalid(t *testing.T) {
+	_, err := executeSonicTool(t,
+		"--datadir", t.TempDir(),
+		"genesis", "fake",
+		"--upgrades", "invalid",
+		"1")
+	require.ErrorContains(t, err, "invalid profile invalid - must be 'sonic', 'allegro', or 'brio'")
+}
+
+func TestSonicTool_genesis_ExportsAndSigns_WithoutErrors(t *testing.T) {
 
 	// Create a history by running some transactions
 	net := tests.StartIntegrationTestNetWithFakeGenesis(t)
